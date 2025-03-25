@@ -1,0 +1,244 @@
+---
+title: ""
+subtitle: "Make metadata - mouse samples - microenvironment cells"
+author: "Pernelle"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    code_folding: show
+    code_download: true
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r clean, echo = FALSE}
+rm(list = ls())
+```
+
+<!-- Automatically computes and prints in the output the running time for any code chunk -->
+```{r, echo=FALSE}
+# https://github.com/rstudio/rmarkdown/issues/1453
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold_", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", "show", "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot"),
+  time_it = local({
+    now = NULL
+    function(before, options) {
+      if (options$time_it) {
+        if (before) {
+          now <<- Sys.time()
+        } else {
+          res = difftime(Sys.time(), now, units = "secs")
+          paste("(Time to run :", round(res, digits = 2), "s)")
+        }
+      }
+    }
+  })
+)
+```
+
+<!-- Set default parameters for all chunks -->
+```{r, setup, include = FALSE}
+set.seed(1337L)
+knitr::opts_chunk$set(echo = TRUE, # display code
+                      # display chunk output
+                      message = FALSE,
+                      warning = FALSE,
+                      fold_output = FALSE, # usefull for sessionInfo()
+                      fold_plot = FALSE,
+                      
+                      # figure settings
+                      fig.align = 'center',
+                      fig.width = 20,
+                      fig.height = 15,
+                      
+                      # something about seed, chunk and Rmarkdown compilation
+                      # https://stackoverflow.com/questions/39417003/long-vectors-not-supported-yet-error-in-rmd-but-not-in-r-script
+                      # cache = TRUE,
+                      cache.lazy = FALSE, 
+                      
+                      # add runtime after chunk
+                      time_it = FALSE)
+```
+
+
+This file is used to generate :
+
+* **sample_info** : dataframe containing sample names, sample path, custom colors...
+* **color_markers** (short version) : named list to give custom colors to cell types
+* **cell_markers** (short version) : named list containing markers for each cell type
+
+
+```{r library}
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+.libPaths()
+```
+
+
+# Preparation
+
+In this section, we set the global settings of the analysis. We will store data there :
+
+```{r out_dir}
+save_name = "env_metadata"
+out_dir = "."
+```
+
+# Sample info
+
+We initialize a dataframe containing everything except colors :
+
+```{r init_sample_info}
+sample_info = data.frame(
+  project_name = c("2023_10", "2023_09","2023_20","2023_26","2023_31","2023_33","2023_35","2023_41","2023_39","2023_47","2023_43","2023_45"),
+  exp_date = c(rep("23_05_04",2),
+               rep("23_05_31",1),
+               rep("23_06_15",1),
+               rep("23_08_08",1),
+               rep("23_08_10",2),
+               rep("23_09_07",2),
+               rep("23_10_16",1),
+               rep("23_10_12",2)),
+  age = c(rep("P365",4), 
+          rep("P90",3),
+          rep("P365",2),
+          rep("P90",3)),
+  genotype = c(rep("flfl", 2),
+               rep("ctrl", 2),
+               rep("ctrl", 1),
+               rep("flfl", 4),
+               rep("ctrl", 1),
+               rep("flfl", 2)),
+  condition = c(rep(c("HLS","cNFs","HS","HS","HS","cNFs","HLS","cNFs","HLS","HS","cNFs","HLS"),1)),
+  color = NA,
+  stringsAsFactors = FALSE) %>%
+  dplyr::mutate(sample_type = paste0(genotype, "_", condition, "_", age)) %>%
+  dplyr::mutate(unique_id = data.table::rowid(sample_type)) %>%
+  dplyr::mutate(sample_identifier = paste0(exp_date, "_", age, "_", condition)) %>%
+  dplyr::select(project_name, exp_date, genotype, age, condition, sample_identifier, sample_type, color)
+
+head(sample_info)
+```
+
+We add custom colors for each sample :
+
+```{r custom_palette}
+list_palette = list(flfl_HLS_P90 = colorRampPalette(c("cadetblue2", "cadetblue4")),
+                    flfl_cNFs_P90 = colorRampPalette(c("orange2", "orange4")),
+                    ctrl_HS_P90 = colorRampPalette(c("orchid2", "orchid4")),
+                    flfl_HLS_P365 = colorRampPalette(c("chartreuse2", "chartreuse4")),
+                    flfl_cNFs_P365 = colorRampPalette(c("firebrick2", "firebrick4")),
+                    ctrl_HS_P365 = colorRampPalette(c("purple2", "purple4")))
+
+for (sample_type in unique(sample_info$sample_type)) {
+  matching_dataset = (sample_info$sample_type == sample_type)
+  sample_info[matching_dataset, "color"] = list_palette[[sample_type]](sum(matching_dataset))
+}
+```
+
+We visualize the colors :
+
+```{r custom_palette_see, fig.width = 10, fig.height = 1}
+sample_info = sample_info %>%
+  dplyr::arrange(as.character(sample_identifier)) %>%
+  dplyr::mutate(project_name = factor(project_name, levels = project_name)) %>%
+  dplyr::mutate(sample_identifier = factor(sample_identifier, levels = sample_identifier))
+
+ggplot2::ggplot(sample_info) +
+  ggplot2::geom_label(aes(x = project_name, y = 0, label = project_name, fill = project_name)) +
+  ggplot2::geom_text(aes(x = project_name, y = 1, label = sample_identifier), angle = 10) +
+  ggplot2::lims(y = c(-1, 2)) +
+  ggplot2::scale_fill_manual(values = sample_info$color, breaks = sample_info$project_name) +
+  ggplot2::theme_void() +
+  ggplot2::theme(legend.position = "none")
+```
+
+It is possible to make confusion between colors ?
+
+```{r custom_palette_pie, fig.width = 4, fig.height = 4}
+graphics::pie(rep(1, nrow(sample_info)),
+              col = sample_info$color,
+              labels = sample_info$project_name)
+```
+
+We save it :
+
+```{r save_sample_info}
+saveRDS(sample_info, file = paste0(out_dir, "/", save_name, "_sample_info.rds"))
+```
+
+
+# Cell types
+
+We define markers for each population of interest :
+
+```{r cell_markers, class.source = "fold-hide"}
+cell_markers = list(
+  "Keratinocytes" = c("Epcam"),
+  "Schwann cells" = c("Sox10", "Plp1", "S100b", "Mpz","Pmp22","Scn7a"),
+  "Melanocytes" = c("Mlana", "Dct","Sox10"),
+  "Immune cells" = c("Ptprc"),
+  "Fibroblasts" = c("Pdgfra","Dcn","Crabp1","Pappa2","Corin"),
+  "Vasculature cells" = c("Pecam1"),
+  "Muscle cells" = c("Pax7","Myod1","Acta2","Des"))
+
+lengths(cell_markers)
+```
+
+Here are custom colors for each cell type :
+
+```{r color_markers, fig.width = 8, fig.height = 0.8, class.source = "fold-hide"}
+color_markers = aquarius::c30_palette[c(1:length(cell_markers))]
+names(color_markers) = names(cell_markers)
+
+data.frame(cell_type = names(color_markers),
+           color = unlist(color_markers)) %>%
+  ggplot2::ggplot(., aes(x = cell_type, y = 0, fill = cell_type)) +
+  ggplot2::geom_point(pch = 21, size = 5) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers), breaks = names(color_markers)) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "none",
+                 axis.line = element_blank(),
+                 axis.title = element_blank(),
+                 axis.ticks = element_blank(),
+                 axis.text.y = element_blank(),
+                 axis.text.x = element_text(angle = 10))
+```
+
+
+We save them :
+
+```{r save_short_annotation}
+saveRDS(color_markers, file = paste0(out_dir, "/", save_name, "_color_markers.rds"))
+saveRDS(cell_markers, file = paste0(out_dir, "/", save_name, "_cell_markers.rds"))
+```
+
+
+# R Session
+
+```{r sessioninfo, echo = FALSE, fold_output = TRUE}
+sessionInfo()
+```

@@ -1,0 +1,360 @@
+---
+title: "Annotation fibroblasts"
+subtitle: "Zoom in fibroblasts - annotation"
+author: "Pernelle"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    code_folding: show
+    code_download: true
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r clean, echo = FALSE}
+rm(list = ls())
+```
+
+<!-- Automatically computes and prints in the output the running time for any code chunk -->
+```{r, echo=FALSE}
+# https://github.com/rstudio/rmarkdown/issues/1453
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold_", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", "show", "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot"),
+  time_it = local({
+    now = NULL
+    function(before, options) {
+      if (options$time_it) {
+        if (before) {
+          now <= Sys.time()
+        } else {
+          res = difftime(Sys.time(), now, units = "secs")
+          paste("(Time to run :", round(res, digits = 2), "s)")
+        }
+      }
+    }
+  })
+)
+```
+
+<!-- Set default parameters for all chunks -->
+```{r, setup, include = FALSE}
+set.seed(1337L)
+knitr::opts_chunk$set(echo = TRUE, # display code
+                      # display chunk output
+                      message = FALSE,
+                      warning = FALSE,
+                      fold_output = FALSE, # usefull for sessionInfo()
+                      fold_plot = FALSE,
+                      
+                      # figure settings
+                      fig.align = 'center',
+                      fig.width = 20,
+                      fig.height = 15,
+                      
+                      # something about seed, chunk and Rmarkdown compilation
+                      # https://stackoverflow.com/questions/39417003/long-vectors-not-supported-yet-error-in-rmd-but-not-in-r-script
+                      # cache = TRUE,
+                      cache.lazy = FALSE, 
+                      
+                      # add runtime after chunk
+                      time_it = FALSE)
+```
+
+
+```{r library}
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(org.Mm.eg.db)
+library(ComplexHeatmap)
+```
+
+
+# Preparation
+
+In this section, we set the global settings of the analysis. We will store data there :
+
+```{r out_dir}
+save_name = "fibro"
+out_dir = "."
+```
+
+
+We load the dataset :
+
+```{r load_sobj}
+sobj = readRDS(paste0(out_dir, "/../5_fibro_extraction/", save_name, "_sobj.rds"))
+sobj
+```
+
+and sample information :
+
+```{r load_sample_info}
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "env_metadata_sample_info.rds"))
+sample_info
+```
+
+This is the projection of interest :
+
+```{r name2D}
+name2D = "harmony_44_umap"
+```
+
+
+```{r resolution}
+sobj = Seurat::FindClusters(sobj, resolution = 1)
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="seurat_clusters", label = TRUE, pt.size = 0.5, label.size = 15) +
+  Seurat::NoAxes() +
+  Seurat::NoLegend() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+
+We visualize clusters :
+
+```{r clustering, fig.width = 6, fig.height = 4, eval = FALSE}
+Seurat::DimPlot(sobj, reduction = name2D, label = TRUE) +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 1)
+```
+
+
+
+```{r cell_annot_FB, fig.width = 22, fig.height = 6}
+FB_markers = list("HF-FIB" = c("Pappa2","Corin","Ramp1","Tagln","Grem2","Wif1","Rasd1","Enpp2","Acta2","Nrg2","Cacna1c","Tpm1"),
+                  "DS-FIB" = c("Morrbid","Cilp","Fgl2","Id2","Gas7"),
+                  "Dermal-FIB" = c("Dcn", "Sparc","Col1a1","Lum"),
+                  "Hyp/Adv-FIB" = c("Cygb", "F3", "Gpx3","Gsn"),
+                  "Epi-FIB" = c("Dcn","Pcolce2","Ly6c1","Comp","Clec3b","Aebp1","Dpt"),
+                  "Peri-FIB" = c("Dcn","Itgb4","Clnd1","Itga6","Ildr2","Fxyd6"),
+                  "Endo-FIB" = c("Dcn", "Spp1","Sox9","Smoc2"),
+                  "Other cells" = c("Pax7","Myod1","Acta2","Des","Epcam","Krt1","Krt14","Pecam1","Ptprc","Scn7a","Mbp","Lyve1","Rapgef5","Cldn5","Ccl21a"))
+
+# FB_markers = list("HF-FIB" = c("Pdgfra","Pappa2","Corin","Ramp1","Tagln","Grem2"),
+#                   "Fib1-2" = c("Pdgfra", "Dcn", "Sparc","Lum"),
+#                   "Fib3-4" = c("Pdgfra", "Cxcl12", "Mfap5", "Gpx3","Plac8"),
+#                   "Epi-FIB" = c("Pdgfra","Pcolce2","Ly6c1","Comp","Cxcl13"),
+#                   "Peri-FIB" = c("Pdgfra","Itgb4","Clnd1"),
+#                   "Endo-FIB" = c("Pdgfra","Spp1","Sox9"),
+#                   "Muscle cells" = c("Pax7","Myod1","Acta2","Des"))
+
+# markers FIB1 : ,"Col1a1","Col1a2","Ndufa4l2","Cldn10","Cpz","Col3a1"
+
+lengths(FB_markers)
+
+color_markers_FB = c("mediumpurple2","mediumpurple4","red4","chartreuse3","steelblue2","darkorange1","goldenrod1",NA)
+
+
+sobj = aquarius::cell_annot_custom(sobj,
+                                   newname = "FB_type",
+                                   markers = FB_markers,
+                                   use_negative = TRUE,
+                                   add_score = TRUE,
+                                   verbose = TRUE)
+
+colnames(sobj@meta.data) = stringr::str_replace_all(string = colnames(sobj@meta.data),
+                                                    pattern = " ",
+                                                    replacement = "_")
+
+sobj$FB_type = factor(sobj$FB_type, levels = names(FB_markers))
+
+
+Seurat::DimPlot(sobj, group.by = "FB_type",
+                reduction = name2D,
+                pt.size = 2,
+                cols = color_markers_FB, na.value = "lightgray") +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5))
+
+
+```
+
+## Cluster smoothing
+
+```{r clustering_smoothing}
+cluster_type = table(sobj$FB_type, sobj$seurat_clusters) %>%
+  prop.table(., margin = 2) %>%
+  apply(., 2, which.max)
+cluster_type = setNames(nm = names(cluster_type),
+                        levels(sobj$FB_type)[cluster_type])
+
+sobj$cluster_type = cluster_type[sobj$seurat_clusters]
+
+names(color_markers_FB) = levels(sobj$cluster_type)
+names(color_markers_FB) = names(FB_markers)
+```
+
+
+```{r cluster_vizualization}
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type", label = FALSE, cols = color_markers_FB, pt.size = 0.5) +
+  Seurat::NoLegend() +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+
+Seurat::Idents(sobj) = sobj$cluster_type
+sobj = subset(sobj, idents = "Other cells", invert = TRUE)
+```
+
+```{r plot_split_dimred, fig.width = 14, fig.height = 8}
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        split_by = "sample_type",
+                                        group_by = "cluster_type",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        group_color = color_markers_FB,
+                                        bg_color = "gray85", bg_pt_size = 0.3, main_pt_size = 0.3)
+
+patchwork::wrap_plots(plot_list, ncol = 3) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 3), title = "Cluster")) &
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+```{r barplot_count_fibro_subtypes, fig.width = 11.77, fig.height = 10}
+Seurat::Idents(sobj) = sobj$cluster_type
+
+sobj$cluster_type = factor(sobj$cluster_type, levels = c("Dermal-FIB","DS-FIB","Endo-FIB","HF-FIB","Hyp/Adv-FIB","Epi-FIB","Peri-FIB"))
+
+quantif = table(sobj$sample_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c("Sample", "nb_cells"))
+
+plot_list = table(sobj$sample_type, sobj$cluster_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c( "Sample", "Cell Type", "Number")) %>%
+  aquarius::plot_barplot(.,
+                         x = "Sample", y = "Number", fill = "Cell Type",
+                         position = position_fill()) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers_FB),
+                             breaks = names(color_markers_FB),
+                             name = "Cell Type") +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, by = 0.5),
+                              labels = paste0(seq(0, 100, by = 50)," %"),
+                              expand = ggplot2::expansion(add = c(0, 0.05))) +
+  ggplot2::geom_label(data = quantif, inherit.aes = FALSE,
+                      aes(x = .data$Sample, y = 1.05, label = .data$nb_cells),
+                      label.size = 0, size = 8) +
+  ggplot2::theme(axis.title.y = element_blank(),
+                 axis.line.x = element_line(colour = "lightgray"),
+                 text = element_text(size = 15),
+                 legend.position = "none")
+plot_list
+```
+
+```{r barplot_count_beautiful_prep}
+
+quantif = table(sobj$sample_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c("Sample", "nb_cells"))
+
+quantif2 = table(sobj$cluster_type, sobj$sample_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c("Cell_type", "Sample_type","nb_cell")) %>%
+  dplyr::filter(Cell_type != "Other cells") %>%
+  dplyr::mutate(Cell_type = as.character(Cell_type)) %>%
+  dplyr::group_by(Sample_type) %>%
+  dplyr::mutate(prop_cell = nb_cell/sum(nb_cell)) %>%
+  dplyr::mutate(prop_cum =  cumsum(nb_cell/sum(nb_cell))) %>%
+  dplyr::mutate(prop_cum_mid = prop_cum) %>%
+  as.data.frame()
+
+quantif3 = lapply(unique(quantif2$Sample_type), FUN = function(Sample_type) {
+  subquantif2 = quantif2[quantif2$Sample_type == Sample_type, ]
+  
+  for (i in c(1:nrow(subquantif2))) {
+    if (i == 1) {
+      subquantif2[i, "prop_cum_mid"] = subquantif2[i, "prop_cum"]/2
+    } else {
+      subquantif2[i, "prop_cum_mid"] = (subquantif2[i - 1, "prop_cum"] + subquantif2[i, "prop_cum"])/2
+    }
+  }
+  
+  return(subquantif2)
+}) %>% do.call(rbind.data.frame, .) %>%
+  dplyr::mutate(prop_cell = 100*round(prop_cell, 4))
+```
+
+
+
+
+
+```{r barplot_count_beautiful, fig.width = 11.77, fig.height = 10}
+sobj$cluster_type = factor(sobj$cluster_type, levels = c("Endo-FIB","Dermal-FIB","Peri-FIB","DS-FIB","Hyp/Adv-FIB","HF-FIB"))
+
+table(sobj$sample_type, sobj$cluster_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c( "Sample", "Cell Type", "Number")) %>%
+  aquarius::plot_barplot(.,
+                         x = "Sample", y = "Number", fill = "Cell Type",
+                         position = position_fill()) +
+  # Fill color
+  ggplot2::scale_fill_manual(values = unlist(color_markers_FB),
+                             breaks = names(color_markers_FB),
+                             name = "Cell Type") +
+  # Y axis style
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, by = 0.5),
+                              labels = paste0(seq(0, 100, by = 50)," %"),
+                              expand = ggplot2::expansion(add = c(0, 0.05))) +
+  # Number of cells by sample
+  ggplot2::geom_label(data = quantif, inherit.aes = FALSE,
+                      aes(x = Sample, y = 1.03, label = nb_cells),
+                      label.size = 0, size = 5) +
+  # Proportion of cell types by sample
+  ggplot2::geom_label(data = quantif3,
+                      inherit.aes = FALSE, fill = "white",
+                      label.size = 0, size = 5,
+                      aes(x = Sample_type,
+                          y = 1 - prop_cum_mid,
+                          label = paste0(prop_cell, "%"))) +
+  # Global style
+  ggplot2::theme(axis.title.y = element_blank(),
+                 axis.line.x = element_line(colour = "lightgray"),
+                 text = element_text(size = 15),
+                 legend.position = "none")
+  
+```
+
+
+# Save
+
+We save the Seurat object :
+
+```{r save_sobj}
+saveRDS(sobj, file = paste0(out_dir, "/", save_name, "_sobj.rds"))
+saveRDS(sample_info, file = paste0(out_dir, "/", save_name, "_sample_info.rds"))
+```
+
+# R Session
+
+```{r sessioninfo, echo = FALSE, fold_output = TRUE}
+sessionInfo()
+```
+

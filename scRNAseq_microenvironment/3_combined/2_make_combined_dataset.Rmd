@@ -1,0 +1,759 @@
+---
+title: "..."
+subtitle: "Combined microenvironment datasets (cNFs + HLS + HS)"
+author: "Pernelle"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    code_folding: show
+    code_download: true
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r clean, echo = FALSE}
+rm(list = ls())
+```
+
+<!-- Automatically computes and prints in the output the running time for any code chunk -->
+```{r, echo=FALSE}
+# https://github.com/rstudio/rmarkdown/issues/1453
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold_", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", "show", "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot"),
+  time_it = local({
+    now = NULL
+    function(before, options) {
+      if (options$time_it) {
+        if (before) {
+          now <= as.numeric(Sys.time())
+        } else {
+          res = as.numeric(Sys.time()) - now # seconds
+          paste("(Time to run :", round(res, digits = 2), "s)")
+        }
+      }
+    }
+  })
+)
+```
+
+<!-- Set default parameters for all chunks -->
+```{r, setup, include = FALSE}
+set.seed(1337L)
+knitr::opts_chunk$set(echo = TRUE, # display code
+                      # display chunk output
+                      message = FALSE,
+                      warning = FALSE,
+                      fold_output = FALSE, # usefull for sessionInfo()
+                      fold_plot = FALSE,
+                      
+                      # figure settings
+                      fig.align = 'center',
+                      fig.width = 9,
+                      fig.height = 9,
+                      
+                      # add runtime after chunk
+                      time_it = FALSE)
+```
+
+
+This file is used to generate a dataset containing all datasets about ....................
+
+```{r library}
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(Seurat)
+```
+
+
+# Preparation
+
+In this section, we set the global settings of the analysis. We will store data there :
+
+```{r out_dir}
+save_name = "combined_cNFs_HS_env"
+out_dir = "."
+```
+
+These are samples of interest :
+
+```{r project_names_oi}
+project_names_oi = c("2023_10", "2023_09","2023_20","2023_26","2023_31","2023_33","2023_35","2023_41","2023_39","2023_47","2023_43","2023_45")
+```
+
+
+We load the sample information :
+
+```{r custom_palette_sample, fig.width = 10, fig.height = 1}
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "env_metadata_sample_info.rds"))
+
+sample_info = sample_info %>%
+  dplyr::filter(project_name %in% project_names_oi)
+
+ggplot2::ggplot(sample_info) +
+  ggplot2::geom_label(aes(x = project_name, y = 0, label = project_name, fill = project_name)) +
+  ggplot2::geom_text(aes(x = project_name, y = 1, label = sample_identifier)) +
+  ggplot2::lims(y = c(-1, 2)) +
+  ggplot2::scale_fill_manual(values = sample_info$color, breaks = sample_info$project_name) +
+  ggplot2::theme_void() +
+  ggplot2::theme(legend.position = "none")
+```
+
+Here are custom colors for each cell type :
+
+```{r color_markers, fig.width = 10, fig.height = 1, class.source = "fold-hide"}
+color_markers = readRDS(paste0(out_dir, "/../1_metadata/", "env_metadata_color_markers.rds"))
+
+data.frame(cell_type = names(color_markers),
+           color = unlist(color_markers)) %>%
+  ggplot2::ggplot(., aes(x = cell_type, y = 0, fill = cell_type)) +
+  ggplot2::geom_point(pch = 21, size = 5) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers), breaks = names(color_markers)) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "none",
+                 axis.line = element_blank(),
+                 axis.title = element_blank(),
+                 axis.ticks = element_blank(),
+                 axis.text.y = element_blank())
+```
+
+
+# Make `r save_name` dataset
+
+## Individual datasets
+
+For each sample, we :
+
+* load individual dataset
+* look at cell annotation
+
+We load individual datasets :
+
+```{r sobj_list}
+sobj_list = lapply(project_names_oi, FUN = function(project_name) {
+  subsobj = readRDS(paste0(out_dir, "/../2_individual/datasets/", project_name, "_sobj_filtered.rds"))
+  return(subsobj)
+})
+names(sobj_list) = project_names_oi
+
+lapply(sobj_list, FUN = dim) %>%
+  do.call(rbind, .)
+```
+
+
+We represent cells in the tSNE :
+
+```{r name2D}
+name2D = "RNA_pca_20_umap"
+```
+
+
+We look at cell type annotation for each dataset :
+
+```{r cell_type_proj, fig.width = 12, fig.height = 8}
+plot_list = lapply(sobj_list, FUN = function(one_sobj) {
+  mytitle = as.character(unique(one_sobj$project_name))
+  mysubtitle = ncol(one_sobj)
+  
+  p = Seurat::DimPlot(one_sobj, group.by = "cell_type",
+                      reduction = name2D) +
+    ggplot2::scale_color_manual(values = color_markers,
+                                breaks = names(color_markers),
+                                name = "Cell Type") +
+    ggplot2::labs(title = mytitle,
+                  subtitle = paste0(mysubtitle, " cells")) +
+    ggplot2::theme(aspect.ratio = 1,
+                   plot.title = element_text(hjust = 0.5),
+                   plot.subtitle = element_text(hjust = 0.5)) +
+    Seurat::NoAxes()
+  
+  return(p)
+})
+
+plot_list[[length(plot_list) + 1]] = patchwork::guide_area()
+
+patchwork::wrap_plots(plot_list, ncol = 3) +
+  patchwork::plot_layout(guides = "collect")
+```
+
+
+## Combined dataset
+
+We combine all datasets :
+
+```{r merge_datasets}
+sobj = base::merge(sobj_list[[1]],
+                   y = sobj_list[c(2:length(sobj_list))],
+                   add.cell.ids = project_names_oi)
+
+rm(sobj_list)
+sobj
+```
+
+We clean this dataset :
+
+```{r clean_dataset}
+column_of_interest = c("orig.ident", "nCount_RNA", "nFeature_RNA",
+                       "log_nCount_RNA", "project_name", "exp_date",
+                       "age", "genotype",
+                       "condition", "sample_identifier", "sample_type","percent.st","cell_type")
+
+sobj@meta.data[!(colnames(sobj@meta.data) %in% column_of_interest)] = NULL
+
+head(sobj@meta.data)
+```
+
+We subset sample info for available samples :
+
+```{r subset_sample_info}
+sample_info = sample_info %>%
+  dplyr::filter(project_name %in% project_names_oi) %>%
+  dplyr::mutate(dplyr::across(dplyr::everything(), as.character)) %>%
+  dplyr::mutate_all(dplyr::funs(factor(., levels = unique(.)))) %>%
+  dplyr::mutate(color = as.character(color))
+
+head(sample_info)
+```
+
+
+We set factor levels :
+
+```{r sobj_set_factor_levels}
+sobj$orig.ident = factor(sobj$orig.ident,
+                         levels = levels(sample_info$project_name))
+sobj$project_name = factor(sobj$project_name,
+                           levels = levels(sample_info$project_name))
+sobj$sample_identifier = factor(sobj$sample_identifier,
+                                levels = levels(sample_info$sample_identifier))
+sobj$genotype = factor(sobj$genotype,
+                       levels = levels(sample_info$genotype))
+sobj$condition = factor(sobj$condition,
+                        levels = levels(sample_info$condition))
+sobj$sample_type = factor(sobj$sample_type,
+                          levels = levels(sample_info$sample_type))
+sobj$cell_type = factor(as.character(sobj$cell_type),
+                        levels = names(color_markers))
+head(sobj@meta.data)
+```
+
+# Processing
+
+We remove genes that are expressed in less than 5 cells :
+
+```{r filter_genes}
+sobj = aquarius::filter_features(sobj, min_cells = 5)
+sobj
+```
+
+## Metadata
+
+How many cells by sample ?
+
+```{r table_orig_ident}
+table(sobj$project_name)
+```
+
+We represent this information as a barplot :
+
+```{r barplot_count, fig.width = 10, fig.height = 5}
+aquarius::plot_barplot(df = table(sobj$project_name,
+                                  sobj$cell_type) %>%
+                         as.data.frame.table() %>%
+                         `colnames<-`(c("Sample", "Cell Type", "Number")),
+                       x = "Sample", y = "Number", fill = "Cell Type",
+                       position = position_fill()) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers),
+                             breaks = names(color_markers),
+                             name = "Cell Type")
+```
+
+barplot with another position :
+
+```{r barplot_stack, fig.width = 10, fig.height = 5}
+aquarius::plot_barplot(df = table(sobj$project_name,
+                                  sobj$cell_type) %>%
+                         as.data.frame.table() %>%
+                         `colnames<-`(c("Sample", "Cell Type", "Number")),
+                       x = "Sample", y = "Number", fill = "Cell Type",
+                       position = position_stack()) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers),
+                             breaks = names(color_markers),
+                             name = "Cell Type")
+```
+
+## Projection
+
+We normalize the count matrix for remaining cells and select highly variable features in 10x Genomics data :
+
+```{r normalization}
+sobj = Seurat::NormalizeData(sobj,
+                             normalization.method = "LogNormalize")
+sobj = Seurat::FindVariableFeatures(sobj, nfeatures = 2000)
+sobj = Seurat::ScaleData(sobj)
+
+sobj
+```
+
+We perform a PCA :
+
+```{r pca}
+sobj = Seurat::RunPCA(sobj,
+                      assay = "RNA",
+                      reduction.name = "RNA_pca",
+                      npcs = 100,
+                      seed.use = 1337L)
+sobj
+```
+
+We choose the number of dimensions such that they summarize 60 % of the variability :
+
+```{r ndims}
+stdev = sobj@reductions[["RNA_pca"]]@stdev
+stdev_prop = cumsum(stdev)/sum(stdev)
+ndims = which(stdev_prop > 0.60)[1]
+ndims
+```
+
+We can visualize this on the elbow plot :
+
+```{r elbowplot, fig.width = 12, fig.height = 4}
+elbow_p = Seurat::ElbowPlot(sobj, ndims = 100, reduction = "RNA_pca") +
+  ggplot2::geom_point(x = ndims, y = stdev[ndims], col = "red")
+x_text = ggplot_build(elbow_p)$layout$panel_params[[1]]$x$get_labels() %>% as.numeric()
+elbow_p = elbow_p +
+  ggplot2::scale_x_continuous(breaks = sort(c(x_text, ndims)), limits = c(0, 100))
+x_color = ifelse(ggplot_build(elbow_p)$layout$panel_params[[1]]$x$get_labels() %>%
+                   as.numeric() %>% round(., 2) == round(ndims, 2), "red", "black")
+elbow_p = elbow_p +
+  ggplot2::theme_classic() +
+  ggplot2::theme(axis.text.x = element_text(color = x_color))
+
+elbow_p
+```
+
+We generate a tSNE and a UMAP with `r ndims` principal components :
+
+```{r tsne_umap, time_it = TRUE}
+sobj = Seurat::RunTSNE(sobj,
+                       reduction = "RNA_pca",
+                       dims = 1:ndims,
+                       seed.use = 1337L,
+                       num_threads = 8, # Rtsne::Rtsne option
+                       reduction.name = paste0("RNA_pca_", ndims, "_tsne"))
+
+sobj = Seurat::RunUMAP(sobj,
+                       reduction = "RNA_pca",
+                       dims = 1:ndims,
+                       seed.use = 1337L,
+                       reduction.name = paste0("RNA_pca_", ndims, "_umap"))
+```
+
+We can visualize the two representations, **without batch-effect correction** :
+
+```{r see_umap_tsne, fig.width = 8, fig.height = 4, class.source = "fold-hide"}
+tsne = Seurat::DimPlot(sobj, group.by = "project_name",
+                       reduction = paste0("RNA_pca_", ndims, "_tsne")) +
+  ggplot2::scale_color_manual(values = sample_info$color,
+                              breaks = sample_info$project_name) +
+  Seurat::NoAxes() + ggplot2::ggtitle("PCA - tSNE") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5),
+                 legend.position = "none")
+
+umap = Seurat::DimPlot(sobj, group.by = "project_name",
+                       reduction = paste0("RNA_pca_", ndims, "_umap")) +
+  ggplot2::scale_color_manual(values = sample_info$color,
+                              breaks = sample_info$project_name) +
+  Seurat::NoAxes() + ggplot2::ggtitle("PCA - UMAP") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5))
+
+tsne | umap
+```
+
+We make a representation split by origin, for the UMAP :
+
+```{r without_harmony_tsne, fig.width = 12, fig.height = 8}
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = paste0("RNA_pca_", ndims, "_umap"),
+                                        split_by = "sample_identifier",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        group_by = "cell_type",
+                                        group_color = color_markers)
+
+plot_list[[length(plot_list) + 1]] = patchwork::guide_area()
+
+patchwork::wrap_plots(plot_list, ncol = 3) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::guides(color = guide_legend(override.aes = list(size = 3),
+                                       ncol = 2, title = "Cell Type"))
+```
+
+## Batch-effect correction
+
+There is a small batch-effect. We remove this effect using Harmony :
+
+```{r harmony_not_working, fig.width = 8, fig.height = 5,  eval=FALSE, echo=FALSE}
+# `%||%` = function(lhs, rhs) {
+#   if (!is.null(x = lhs)) {
+#     return(lhs)
+#   } else {
+#     return(rhs)
+#   }
+# }
+# 
+# set.seed(1337L)
+# sobj = harmony::RunHarmony(object = sobj,
+#                            group.by.vars = "dissociation", # c("sample_identifier", "dissociation")
+#                            plot_convergence = TRUE,
+#                            reduction = "RNA_pca",
+#                            assay.use = "RNA",
+#                            reduction.save = "harmony",
+#                            max.iter.harmony = 50,
+#                            project.dim = FALSE)
+```
+
+```{r harmony, fig.width = 8, fig.height = 5}
+set.seed(1337L)
+my_harmony_embeddings <- harmony::HarmonyMatrix(
+  data_mat  = as.matrix(sobj@reductions$RNA_pca@cell.embeddings),
+  meta_data = sobj@meta.data,
+  vars_use  = 'exp_date',
+  max.iter.harmony = 50,
+  do_pca = FALSE
+)
+rownames(my_harmony_embeddings) <- rownames(sobj@reductions$RNA_pca@cell.embeddings)
+
+#store the harmony reduction as a custom dimensional reduction called 'harmony' in the default assay
+sobj[["harmony"]] <- Seurat::CreateDimReducObject(embeddings = my_harmony_embeddings, key = "harmony_", assay = DefaultAssay(sobj))
+
+```
+
+
+From this batch-effect removed projection, we generate a tSNE and a UMAP.
+
+```{r harmony_tsne_umap, time_it = TRUE}
+sobj = Seurat::RunUMAP(sobj, 
+                       seed.use = 1337L,
+                       dims = 1:ndims,
+                       reduction = "harmony",
+                       reduction.name = paste0("harmony_", ndims, "_umap"),
+                       reduction.key = paste0("harmony_", ndims, "umap_"))
+sobj = Seurat::RunTSNE(sobj,
+                       dims = 1:ndims,
+                       seed.use = 1337L,
+                       num_threads = 8, # Rtsne::Rtsne option
+                       reduction = "harmony",
+                       reduction.name = paste0("harmony_", ndims, "_tsne"),
+                       reduction.key = paste0("harmony", ndims, "tsne_"))
+```
+
+We visualize the representation **after batch-effect correction** :
+
+```{r see_umap_tsne_harmony1, fig.width = 8, fig.height = 4, class.source = "fold-hide"}
+tsne = Seurat::DimPlot(sobj, group.by = "project_name",
+                       reduction = paste0("harmony_", ndims, "_tsne")) +
+  ggplot2::scale_color_manual(values = sample_info$color,
+                              breaks = sample_info$project_name) +
+  Seurat::NoAxes() + ggplot2::ggtitle("PCA - harmony - tSNE") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5),
+                 legend.position = "none")
+
+umap = Seurat::DimPlot(sobj, group.by = "project_name",
+                       reduction = paste0("harmony_", ndims, "_umap")) +
+  ggplot2::scale_color_manual(values = sample_info$color,
+                              breaks = sample_info$project_name) +
+  Seurat::NoAxes() + ggplot2::ggtitle("PCA - harmony - UMAP") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5))
+
+tsne | umap
+```
+
+We will keep the UMAP from harmony :
+
+```{r set_name2D}
+reduction = "harmony"
+name2D = paste0("harmony_", ndims, "_umap")
+```
+
+## Clustering
+
+We generate a clustering :
+
+```{r clustering, fig.width = 6, fig.height = 4}
+sobj = Seurat::FindNeighbors(sobj, reduction = reduction, dims = 1:ndims)
+sobj = Seurat::FindClusters(sobj, resolution = 30)
+
+clusters_plot = Seurat::DimPlot(sobj, reduction = name2D, label = TRUE) +
+  Seurat::NoAxes() + Seurat::NoLegend() +
+  ggplot2::theme(aspect.ratio = 1)
+clusters_plot
+```
+
+
+
+Ici par exemple, c'est le moment de regrouper les types cellulaires par cluster
+
+
+
+# Visualization
+
+We can represent the 4 quality metrics :
+
+```{r qc_plot, fig.width = 12, fig.height = 3}
+plot_list = Seurat::FeaturePlot(sobj, reduction = name2D,
+                                combine = FALSE, pt.size = 0.25,
+                                features = c("percent.mt", "percent.rb", "percent.st", "nFeature_RNA"))
+plot_list = lapply(plot_list, FUN = function(one_plot) {
+  one_plot +
+    Seurat::NoAxes() +
+    ggplot2::scale_color_gradientn(colors = aquarius:::color_gene) +
+    ggplot2::theme(aspect.ratio = 1)
+})
+
+patchwork::wrap_plots(plot_list, nrow = 1)
+```
+
+## Project name
+
+We can visualize the two batch-effect corrected representations :
+
+```{r see_umap_tsne_harmony, fig.width = 8, fig.height = 4, class.source = "fold-hide"}
+tsne = Seurat::DimPlot(sobj, group.by = "project_name",
+                       reduction = paste0("harmony_", ndims, "_tsne")) +
+  ggplot2::scale_color_manual(values = sample_info$color,
+                              breaks = sample_info$project_name) +
+  Seurat::NoAxes() + ggplot2::ggtitle("PCA - harmony - tSNE") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5),
+                 legend.position = "none")
+
+umap = Seurat::DimPlot(sobj, group.by = "project_name",
+                       reduction = paste0("harmony_", ndims, "_umap")) +
+  ggplot2::scale_color_manual(values = sample_info$color,
+                              breaks = sample_info$project_name) +
+  Seurat::NoAxes() + ggplot2::ggtitle("PCA - harmony - UMAP") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5))
+
+tsne | umap
+```
+
+## Cell type
+
+We visualize cell type :
+
+```{r see_cell_type, fig.width = 10, fig.height = 10}
+plot_list = lapply((c(paste0("RNA_pca_", ndims, "_tsne"),
+                      paste0("RNA_pca_", ndims, "_umap"),
+                      paste0("harmony_", ndims, "_tsne"),
+                      paste0("harmony_", ndims, "_umap"))),
+                   FUN = function(one_red) {
+                     Seurat::DimPlot(sobj, group.by = "cell_type",
+                                     reduction = one_red,
+                                     cols = color_markers) +
+                       Seurat::NoAxes() + ggplot2::ggtitle(one_red) +
+                       ggplot2::theme(aspect.ratio = 1,
+                                      plot.title = element_text(hjust = 0.5))
+                   })
+
+patchwork::wrap_plots(plot_list, nrow = 2) +
+  patchwork::plot_layout(guides = "collect")
+```
+
+
+We make a representation split by origin to show cell types :
+
+```{r cell_type_split, fig.width = 12, fig.height = 8}
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        split_by = "sample_identifier",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        group_by = "cell_type",
+                                        group_color = color_markers)
+
+plot_list[[length(plot_list) + 1]] = patchwork::guide_area()
+
+patchwork::wrap_plots(plot_list, ncol = 3) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::guides(color = guide_legend(override.aes = list(size = 3),
+                                       ncol = 2, title = "Cell Type"))
+```
+
+We make a table to show the number of cells in each dataset :
+
+```{r table_cell_type_test, fig.width = 11, fig.height = 5, class.source = "fold-hide"}
+df_quantities = table(sobj$cell_type,
+                      sobj$project_name) %>%
+  as.data.frame.array(stringAsFactors = FALSE) %>%
+  dplyr::mutate(cell_type = rownames(.)) %>%
+  dplyr::relocate(cell_type)
+df_quantities$nb_cells = rowSums(table(sobj$cell_type, sobj$project_name))
+df_quantities = rbind(df_quantities,
+                      c("Number of cells", as.numeric(table(sobj$project_name)), ncol(sobj)))
+
+columns_color = unlist(color_markers[levels(sobj$cell_type)])
+columns_color = c(columns_color, NA, rep(NA, times = nrow(df_quantities)*(ncol(df_quantities) - 1)))
+font_color = ifelse(is.na(columns_color), yes = "black", no = "white")
+
+# Cell type
+custom_theme1 = gridExtra::ttheme_minimal(base_colour = font_color,
+                                          core = list(bg_params = list(fill = columns_color,
+                                                                       col = "black")),
+                                          colhead = list(fg_params = list(col = "black")))
+gb1 = gridExtra::tableGrob(df_quantities,
+                           rows = NULL,
+                           cols = c("Cell type", levels(sobj$project_name), "Nb cells"),
+                           theme = custom_theme1)
+
+# Patchwork
+title_gg = ggplot2::ggplot() +
+  ggplot2::theme_minimal()
+
+patchwork::wrap_plots(list(title_gg, gb1)) +
+  patchwork::plot_layout(design = "A\nB", heights = c(0.1,5)) &
+  ggplot2::theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+```
+
+We make the same with proportions :
+
+```{r prop_cell_type, fig.width = 11, fig.height = 5, class.source = "fold-hide"}
+df_quantities = table(sobj$cell_type,
+                      sobj$project_name) %>%
+  prop.table(., margin = 2) %>%
+  "*"(100) %>% round(., 2) %>%
+  as.data.frame.array(stringAsFactors = FALSE) %>%
+  dplyr::mutate(cell_type = rownames(.)) %>%
+  dplyr::relocate(cell_type)
+df_quantities$nb_cells = rowSums(table(sobj$cell_type, sobj$project_name))
+df_quantities = rbind(df_quantities,
+                      c("Number of cells", as.numeric(table(sobj$project_name)), ncol(sobj)))
+
+columns_color = unlist(color_markers[levels(sobj$cell_type)])
+columns_color = c(columns_color, NA, rep(NA, times = nrow(df_quantities)*(ncol(df_quantities) - 1)))
+font_color = ifelse(is.na(columns_color), yes = "black", no = "white")
+
+# Cell type
+custom_theme1 = gridExtra::ttheme_minimal(base_colour = font_color,
+                                          core = list(bg_params = list(fill = columns_color,
+                                                                       col = "black")),
+                                          colhead = list(fg_params = list(col = "black")))
+gb1 = gridExtra::tableGrob(df_quantities,
+                           rows = NULL,
+                           cols = c("Cell type", levels(sobj$project_name), "Nb cells"),
+                           theme = custom_theme1)
+
+# Patchwork
+title_gg = ggplot2::ggplot() +
+  ggplot2::theme_minimal()
+
+patchwork::wrap_plots(list(title_gg, gb1)) +
+  patchwork::plot_layout(design = "A\nB", heights = c(0.1,5)) &
+  ggplot2::theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+```
+
+## Clusters
+
+We can represent clusters, split by sample of origin :
+
+```{r plot_split_dimred, fig.width = 12, fig.height = 8}
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        split_by = "sample_identifier",
+                                        group_by = "seurat_clusters",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        group_color = aquarius::gg_color_hue(length(levels(sobj$seurat_clusters))))
+
+plot_list[[length(plot_list) + 1]] = clusters_plot +
+  ggplot2::labs(title = "Cluster ID") &
+  ggplot2::theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+patchwork::wrap_plots(plot_list, ncol = 3) &
+  ggplot2::theme(legend.position = "none")
+```
+## Cluster smoothing
+
+```{r clustering_smoothing}
+cluster_type = table(sobj$cell_type, sobj$seurat_clusters) %>%
+  prop.table(., margin = 2) %>%
+  apply(., 2, which.max)
+cluster_type = setNames(nm = names(cluster_type),
+                        levels(sobj$cell_type)[cluster_type])
+
+sobj$cluster_type = cluster_type[sobj$seurat_clusters]
+```
+
+## New clusters
+
+We visualize the clustering :
+
+```{r see_new.clusters, fig.width = 12, fig.height = 6, class.source = "fold-hide"}
+tsne = Seurat::DimPlot(sobj, group.by = "cluster_type", label = TRUE,
+                       reduction = paste0("harmony_", ndims, "_tsne")) +
+  Seurat::NoAxes() + ggplot2::ggtitle("tSNE") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5),
+                 legend.position = "none")
+
+umap = Seurat::DimPlot(sobj, group.by = "cluster_type", label = TRUE,
+                       reduction = paste0("harmony_", ndims, "_umap")) +
+  Seurat::NoAxes() + ggplot2::ggtitle("UMAP") +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5))
+
+tsne | umap
+```
+
+## Cluster markers
+
+```{r markers_clusters, eval=FALSE, echo=FALSE}
+cluster.markers <- Seurat::FindMarkers(sobj, ident.1 = c(79), min.pct = 0.25)
+head(cluster.markers, n = 30)
+```
+#cluster.markers%>%filter(avg_logFC>1&p_val_adj<0.01)%>%rownames()%>%aquarius::print_to_copy_paste()
+
+#reduction = paste0("harmony_", ndims, "_umap"),
+
+# Save
+
+We save the Seurat object :
+
+```{r save_sobj}
+saveRDS(sobj, file = paste0(out_dir, "/", save_name, "_sobj.rds"))
+saveRDS(sample_info, file = paste0(out_dir, "/", save_name, "_sample_info.rds"))
+```
+
+
+# R Session
+
+```{r sessioninfo, echo = FALSE, fold_output = TRUE}
+sessionInfo()
+```
+
