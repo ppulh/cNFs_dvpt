@@ -1,0 +1,521 @@
+---
+title: "Annotation_SCs_subtypes"
+author: "Pernelle"
+date: '2024-03-14'
+output:
+  html_document:
+    code_folding: show
+    code_download: true
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r clean, echo = FALSE}
+rm(list = ls())
+```
+
+<!-- Automatically computes and prints in the output the running time for any code chunk -->
+```{r, echo=FALSE}
+# https://github.com/rstudio/rmarkdown/issues/1453
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold_", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", "show", "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot"),
+  time_it = local({
+    now = NULL
+    function(before, options) {
+      if (options$time_it) {
+        if (before) {
+          now <= Sys.time()
+        } else {
+          res = difftime(Sys.time(), now, units = "secs")
+          paste("(Time to run :", round(res, digits = 2), "s)")
+        }
+      }
+    }
+  })
+)
+```
+
+<!-- Set default parameters for all chunks -->
+```{r, setup, include = FALSE}
+set.seed(1337L)
+knitr::opts_chunk$set(echo = TRUE, # display code
+                      # display chunk output
+                      message = FALSE,
+                      warning = FALSE,
+                      fold_output = FALSE, # usefull for sessionInfo()
+                      fold_plot = FALSE,
+                      
+                      # figure settings
+                      fig.align = 'center',
+                      fig.width = 20,
+                      fig.height = 15,
+                      
+                      # something about seed, chunk and Rmarkdown compilation
+                      # https://stackoverflow.com/questions/39417003/long-vectors-not-supported-yet-error-in-rmd-but-not-in-r-script
+                      # cache = TRUE,
+                      cache.lazy = FALSE, 
+                      
+                      # add runtime after chunk
+                      time_it = FALSE)
+```
+
+
+```{r library}
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+```
+
+# Preparation
+
+In this section, we set the global settings of the analysis. We will store data there :
+
+```{r out_dir}
+save_name = "SC"
+out_dir = "."
+```
+
+We load the dataset :
+
+```{r load_sobj}
+sobj = readRDS(paste0(out_dir, "/../4_zoomSC/", save_name, "_sobj.rds"))
+sobj
+```
+
+and sample information :
+
+```{r load_sample_info}
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_sample_info.rds"))
+sample_info
+```
+
+This is the projection of interest :
+
+```{r name2D}
+name2D = "harmony_46_umap"
+```
+
+We load metadata :
+
+```{r load_metadata}
+color_markers = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_color_markers.rds"))
+cell_markers = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_cell_markers.rds"))
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_sample_info.rds"))
+```
+
+We visualize clusters :
+
+```{r cluster_vizualization, fig.width = 12, fig.height = 8, eval = FALSE}
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type", label = FALSE, cols = color_markers, pt.size = 0.5) +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+We change the resolution of the dataset :
+
+```{r resolution}
+sobj = Seurat::FindClusters(sobj, resolution = 1.5)
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="seurat_clusters", label = TRUE, pt.size = 0.5, label.size = 15) +
+  Seurat::NoAxes() +
+  Seurat::NoLegend() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+# Cell types
+
+We define markers for each population of interest :
+
+```{r cell_markers, class.source = "fold-hide"}
+cell_markers_SCs = list(
+  "Myelinating schwann cells" = c("Sox10", "Plp1", "S100b", "Lgi4", "Mpz","Pmp22","Mal","Egr2"),
+  "Non myelinating schwann cells" = c("Sox10", "Plp1", "S100b", "Lgi4","Gap43","Ngfr","Scn7a"),
+  "NA" = c("Fabp4", "Ebf1", "Mast4", "Rgs5","Epcam"))
+
+lengths(cell_markers_SCs)
+```
+
+Cell populations annotation with the new resolution : 
+
+Here are custom colors for each cell type :
+
+```{r color_markers_SC, fig.width = 8, fig.height = 0.8, class.source = "fold-hide"}
+color_markers_SCs = aquarius::c30_palette[c(1:length(cell_markers))]
+names(color_markers_SCs) = names(cell_markers_SCs)
+
+data.frame(cell_type = names(color_markers_SCs),
+           color = unlist(color_markers_SCs)) %>%
+  ggplot2::ggplot(., aes(x = cell_type, y = 0, fill = cell_type)) +
+  ggplot2::geom_point(pch = 21, size = 5) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers), breaks = names(color_markers)) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "none",
+                 axis.line = element_blank(),
+                 axis.title = element_blank(),
+                 axis.ticks = element_blank(),
+                 axis.text.y = element_blank(),
+                 axis.text.x = element_text(angle = 10))
+```
+
+We annotate cells for cell type, with the new normalized expression matrix :
+
+```{r cell_type_2, class.source = "fold-hide", time_it = FALSE}
+score_columns = grep(x = colnames(sobj@meta.data), pattern = "^score", value = TRUE)
+sobj@meta.data[, score_columns] = NULL
+sobj$cell_type = NULL
+
+sobj = aquarius::cell_annot_custom(sobj,
+                                   newname = "cell_type",
+                                   markers = cell_markers_SCs,
+                                   use_negative = TRUE,
+                                   add_score = TRUE,
+                                   verbose = TRUE)
+
+sobj$cell_type = factor(sobj$cell_type, levels = names(cell_markers_SCs))
+
+colnames(sobj@meta.data) = stringr::str_replace_all(string = colnames(sobj@meta.data),
+                                                    pattern = " ",
+                                                    replacement = "_")
+
+table(sobj$cell_type)
+```
+
+## Cluster smoothing
+
+```{r clustering_smoothing}
+cluster_type = table(sobj$cell_type, sobj$seurat_clusters) %>%
+  prop.table(., margin = 2) %>%
+  apply(., 2, which.max)
+cluster_type = setNames(nm = names(cluster_type),
+                        levels(sobj$cell_type)[cluster_type])
+
+sobj$cluster_type = cluster_type[sobj$seurat_clusters]
+```
+
+We visualize the new clusters :
+
+```{r clustering, fig.width = 12, fig.height = 8, eval = FALSE}
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type", label = FALSE, cols = color_markers, pt.size = 0.5) +
+  Seurat::NoLegend() +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+and split by origin :
+
+```{r plot_split_dimred, fig.width = 12, fig.height = 10}
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        split_by = "sample_type",
+                                        group_by = "cluster_type",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        group_color = color_markers,
+                                        bg_color = "gray85", bg_pt_size = 0.3, main_pt_size = 0.3)
+
+patchwork::wrap_plots(plot_list, ncol = 3) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 3), title = "Cluster"))
+```
+
+```{r barplot_count, fig.width = 11.77, fig.height = 10}
+Seurat::Idents(sobj) = sobj$cluster_type
+
+quantif = table(sobj$sample_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c("Sample", "nb_cells"))
+
+plot_list = table(sobj$sample_type, sobj$cluster_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c( "Sample", "Cell Type", "Number")) %>%
+  aquarius::plot_barplot(.,
+                         x = "Sample", y = "Number", fill = "Cell Type",
+                         position = position_fill()) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers),
+                             breaks = names(color_markers),
+                             name = "Cell Type") +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, by = 0.5),
+                              labels = paste0(seq(0, 100, by = 50)," %"),
+                              expand = ggplot2::expansion(add = c(0, 0.05))) +
+  ggplot2::geom_label(data = quantif, inherit.aes = FALSE,
+                      aes(x = .data$Sample, y = 1.05, label = .data$nb_cells),
+                      label.size = 0, size = 8) +
+  ggplot2::theme(axis.title.y = element_blank(),
+                 axis.line.x = element_line(colour = "lightgray"),
+                 text = element_text(size = 15),
+                 legend.position = "none")
+plot_list
+```
+
+```{r dotplot_SCs_markers, fig.width = 20, fig.height = 7.5}
+
+Seurat::Idents(sobj) = sobj$cluster_type
+
+Seurat::DotPlot(sobj,
+                features = c( "Ngfr","Gap43","Scn7a","Pmp22","Mbp","Mpz","Sox10","S100b","Plp1"),
+                group.by = "cluster_type", dot.scale = 15) +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene) +
+  ggplot2::theme(axis.title = element_blank(),
+                 legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 25),
+                 legend.text = element_text(size = 25),
+                 axis.text = element_text(size = 30),
+                 axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggplot2::theme(aspect.ratio = 0.5)
+```
+
+```{r feature_plot_Tomato, fig.width = 12, fig.height = 7}
+
+Tomato = Seurat::FeaturePlot(sobj, features = c("tdTomato"), reduction = name2D, label = FALSE, pt.size = 0.5) +
+  Seurat::NoAxes() +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene,
+                                 name = "Expression level") +
+  ggplot2::theme(legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 20),
+                 legend.text = element_text(size = 20)) +
+  ggplot2::theme(aspect.ratio = 0.8) 
+
+ARN_mt = Seurat::FeaturePlot(sobj, features = c("percent.mt"), reduction = name2D, label = FALSE, pt.size = 0.5) +
+  Seurat::NoAxes() +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene,
+                                 name = "Expression level") +
+  ggplot2::theme(legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 20),
+                 legend.text = element_text(size = 20)) +
+  ggplot2::theme(aspect.ratio = 0.8) 
+
+Tomato | ARN_mt
+```
+
+# SC subtypes
+
+```{r cell_markers_version_fine, class.source = "fold-hide"}
+cell_markers_SCs_fin = list("Other nmSCs" = c("Sox10", "Plp1", "S100b", "Lgi4","Gap43","Ngfr","Scn7a"),
+                            #"Subepidermal glia" = c("Aqp1","Plac9","Igfbp7","Ldlrad4","Apod","Ndnf","Ifi47","Gja1","Pcdh20","Fez1","Lyz2"),
+                            "Subepidermal glia" = c("Gja1","Aqp1","Igfbp7","Fez1","Plac9"),
+                            "Lanceolate glia" = c("Aqp1", "Homer2", "Npy","Cav1","Robo2","Cavin2"),
+                            "Proliferating nmSCs" = c("Birc5","Top2a","Mki67","H1f1"),
+                            "mSCs" = c("Mbp","Mpz","Pmp22"))
+
+lengths(cell_markers_SCs_fin)
+```
+
+
+```{r color_markers_SC_subtypes, fig.width = 8, fig.height = 0.8, class.source = "fold-hide"}
+color_markers_SCs_fin = c("red4","darkorchid","olivedrab1","chocolate3","dodgerblue3")
+names(color_markers_SCs_fin) = names(cell_markers_SCs_fin)
+
+data.frame(cell_type = names(color_markers_SCs_fin),
+           color = unlist(color_markers_SCs_fin)) %>%
+  ggplot2::ggplot(., aes(x = cell_type, y = 0, fill = cell_type)) +
+  ggplot2::geom_point(pch = 21, size = 5) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers_SCs_fin), breaks = names(color_markers_SCs_fin)) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "none",
+                 axis.line = element_blank(),
+                 axis.title = element_blank(),
+                 axis.ticks = element_blank(),
+                 axis.text.y = element_blank(),
+                 axis.text.x = element_text(angle = 10))
+```
+
+
+```{r new_annotation, class.source = "fold-hide"}
+sobj = aquarius::cell_annot_custom(sobj,
+                                   newname = "SC_subtypes",
+                                   markers = cell_markers_SCs_fin,
+                                   use_negative = TRUE,
+                                   add_score = TRUE,
+                                   verbose = TRUE)
+
+colnames(sobj@meta.data) = stringr::str_replace_all(string = colnames(sobj@meta.data),
+                                                    pattern = " ",
+                                                    replacement = "_")
+
+sobj$SC_subtypes = factor(sobj$SC_subtypes, levels = names(cell_markers_SCs_fin))
+
+table(sobj$SC_subtypes) 
+
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="SC_subtypes", label = TRUE, pt.size = 0.5, label.size = 15) +
+  Seurat::NoAxes() +
+  Seurat::NoLegend() +
+  ggplot2::theme(aspect.ratio = 0.8)
+
+```
+
+
+```{r cluster_smoothing_SC_subtypes, fig.width = 12, fig.height = 8}
+cluster_type_SCs = table(sobj$SC_subtypes, sobj$seurat_clusters) %>%
+  prop.table(., margin = 2) %>%
+  apply(., 2, which.max)
+cluster_type_SCs = setNames(nm = names(cluster_type_SCs),
+                            levels(sobj$SC_subtypes)[cluster_type_SCs])
+
+sobj$cluster_type_SCs = cluster_type_SCs[sobj$seurat_clusters]
+
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type_SCs", label = FALSE, pt.size = 0.5, cols = color_markers_SCs_fin) +
+  Seurat::NoLegend() +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+
+```
+
+
+```{r barplot_count_beautiful_prep}
+sobj$cluster_type_SCs = factor(sobj$cluster_type_SCs, levels = c("Lanceolate glia","mSCs","Proliferating nmSCs","Subepidermal glia","Other nmSCs"))
+
+quantif = table(sobj$sample_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c("Sample", "nb_cells"))
+
+quantif2 = table(sobj$cluster_type_SCs, sobj$sample_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c("Cell_type", "Sample_type","nb_cell")) %>%
+  dplyr::mutate(Cell_type = as.character(Cell_type)) %>%
+  dplyr::group_by(Sample_type) %>%
+  dplyr::mutate(prop_cell = nb_cell/sum(nb_cell)) %>%
+  dplyr::mutate(prop_cum =  cumsum(nb_cell/sum(nb_cell))) %>%
+  dplyr::mutate(prop_cum_mid = prop_cum) %>%
+  as.data.frame()
+
+quantif3 = lapply(unique(quantif2$Sample_type), FUN = function(Sample_type) {
+  subquantif2 = quantif2[quantif2$Sample_type == Sample_type, ]
+  
+  for (i in c(1:nrow(subquantif2))) {
+    if (i == 1) {
+      subquantif2[i, "prop_cum_mid"] = subquantif2[i, "prop_cum"]/2
+    } else {
+      subquantif2[i, "prop_cum_mid"] = (subquantif2[i - 1, "prop_cum"] + subquantif2[i, "prop_cum"])/2
+    }
+  }
+  
+  return(subquantif2)
+}) %>% do.call(rbind.data.frame, .) %>%
+  dplyr::mutate(prop_cell = 100*round(prop_cell, 4))
+
+quantif3 = quantif3[-c(3,18,23,28),]
+```
+
+```{r barplot_count_SCs_subtypes, fig.width = 11.77, fig.height = 10}
+sobj$cluster_type_SCs = factor(sobj$cluster_type_SCs, levels = c("Lanceolate glia","mSCs","Proliferating nmSCs","Subepidermal glia","Other nmSCs"))
+
+table(sobj$sample_type, sobj$cluster_type_SCs) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c( "Sample", "Cell Type", "Number")) %>%
+  aquarius::plot_barplot(.,
+                         x = "Sample", y = "Number", fill = "Cell Type",
+                         position = position_fill()) +
+  # Fill color
+  ggplot2::scale_fill_manual(values = unlist(color_markers_SCs_fin),
+                             breaks = names(color_markers_SCs_fin),
+                             name = "Cell Type") +
+  # Y axis style
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, by = 0.5),
+                              labels = paste0(seq(0, 100, by = 50)," %"),
+                              expand = ggplot2::expansion(add = c(0, 0.05))) +
+  # Number of cells by sample
+  ggplot2::geom_label(data = quantif, inherit.aes = FALSE,
+                      aes(x = Sample, y = 1.05, label = nb_cells),
+                      label.size = 0, size = 5) +
+  # Proportion of cell types by sample
+  ggplot2::geom_label(data = quantif3,
+                      inherit.aes = FALSE, fill = "white",
+                      label.size = 0, size = 5,
+                      aes(x = Sample_type,
+                          y = 1 - prop_cum_mid,
+                          label = paste0(prop_cell, "%"))) +
+  # Global style
+  ggplot2::theme(axis.title.y = element_blank(),
+                 axis.line.x = element_line(colour = "lightgray"),
+                 text = element_text(size = 15),
+                 legend.position = "none")
+  
+```
+
+
+```{r dotplot_SC_subtypes_markers, fig.width = 25, fig.height = 7.5}
+Seurat::Idents(sobj) = sobj$cluster_type_SCs
+sobj$cluster_type_SCs = factor(sobj$cluster_type_SCs, levels = c("mSCs","Proliferating nmSCs","Lanceolate glia","Subepidermal glia","Other nmSCs"))
+
+Seurat::DotPlot(sobj,
+                features = c("Mpz","Mbp","Pmp22","Mki67","Top2a","Birc5","Cavin2","Cav1","Homer2","Npy","Nes","Ndnf","Apod","Gja1","Aqp1","Igfbp7","Fez1","Lyz2","Plac9","Gap43","Ngfr","Scn7a"),
+                group.by = "cluster_type_SCs", dot.scale = 15) +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene) +
+  ggplot2::theme(axis.title = element_blank(),
+                 legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 25),
+                 legend.text = element_text(size = 25),
+                 axis.text = element_text(size = 30),
+                 axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggplot2::theme(aspect.ratio = 0.4)
+```
+
+
+```{r plot_split_dimred_SCs_subtypes, fig.width = 14, fig.height = 8}
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        split_by = "sample_type",
+                                        group_by = "cluster_type_SCs",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        group_color = color_markers_SCs_fin,
+                                        bg_color = "gray85", bg_pt_size = 0.3, main_pt_size = 0.1)
+
+patchwork::wrap_plots(plot_list, ncol = 3) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 3), title = "Cluster")) &
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+
+# Save
+
+We save the Seurat object :
+
+```{r save_sobj}
+saveRDS(sobj, file = paste0(out_dir, "/", save_name, "_sobj.rds"))
+saveRDS(sample_info, file = paste0(out_dir, "/", save_name, "_sample_info.rds"))
+```
+
+
+# R Session
+
+```{r sessioninfo, echo = FALSE, fold_output = TRUE}
+sessionInfo()
+```
+
+
+
+
+
+
+

@@ -1,0 +1,923 @@
+---
+title: "Axonal guidance cues genes"
+subtitle: "Analysis heatmaps + violin plots"
+author: "Pernelle"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    code_folding: show
+    code_download: true
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r clean, echo = FALSE}
+rm(list = ls())
+```
+
+<!-- Automatically computes and prints in the output the running time for any code chunk -->
+```{r, echo=FALSE}
+# https://github.com/rstudio/rmarkdown/issues/1453
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold_", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", "show", "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot"),
+  time_it = local({
+    now = NULL
+    function(before, options) {
+      if (options$time_it) {
+        if (before) {
+          now <= Sys.time()
+        } else {
+          res = difftime(Sys.time(), now, units = "secs")
+          paste("(Time to run :", round(res, digits = 2), "s)")
+        }
+      }
+    }
+  })
+)
+```
+
+<!-- Set default parameters for all chunks -->
+```{r, setup, include = FALSE}
+set.seed(1337L)
+knitr::opts_chunk$set(echo = TRUE, # display code
+                      # display chunk output
+                      message = FALSE,
+                      warning = FALSE,
+                      fold_output = FALSE, # usefull for sessionInfo()
+                      fold_plot = FALSE,
+                      
+                      # figure settings
+                      fig.align = 'center',
+                      fig.width = 20,
+                      fig.height = 15,
+                      
+                      # something about seed, chunk and Rmarkdown compilation
+                      # https://stackoverflow.com/questions/39417003/long-vectors-not-supported-yet-error-in-rmd-but-not-in-r-script
+                      # cache = TRUE,
+                      cache.lazy = FALSE, 
+                      
+                      # add runtime after chunk
+                      time_it = FALSE)
+```
+
+
+```{r library}
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(org.Mm.eg.db)
+library(ComplexHeatmap)
+```
+
+
+# Preparation
+
+In this section, we set the global settings of the analysis. We will store data there :
+
+```{r out_dir}
+save_name = "SC"
+out_dir = "."
+```
+
+
+We load the dataset :
+
+```{r load_sobj}
+sobj = readRDS(paste0(out_dir, "/../5_annotation/", save_name, "_sobj.rds"))
+sobj
+```
+
+and sample information :
+
+```{r load_sample_info}
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_sample_info.rds"))
+sample_info
+```
+
+This is the projection of interest :
+
+```{r name2D}
+name2D = "harmony_46_umap"
+```
+
+We load metadata :
+
+```{r load_metadata}
+color_markers = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_color_markers.rds"))
+cell_markers = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_cell_markers.rds"))
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "Tom_metadata_sample_info.rds"))
+```
+
+We visualize clusters :
+
+```{r clustering, fig.width = 12, fig.height = 8, eval = FALSE}
+cell_markers_SCs_fin = list("Other nmSCs" = c("Sox10", "Plp1", "S100b", "Lgi4","Gap43","Ngfr","Scn7a"),
+                            #"Subepidermal glia" = c("Aqp1","Plac9","Igfbp7","Ldlrad4","Apod","Ndnf","Ifi47","Gja1","Pcdh20","Fez1","Lyz2"),
+                            "Subepidermal glia" = c("Gja1","Aqp1","Igfbp7","Fez1","Plac9"),
+                            "Lanceolate glia" = c("Aqp1", "Homer2", "Npy","Cav1","Robo2","Cavin2"),
+                            "Proliferating nmSCs" = c("Birc5","Top2a","Mki67","H1f1"),
+                            "mSCs" = c("Mbp","Mpz","Pmp22"))
+color_markers_SCs_fin = c("red4","darkorchid","olivedrab1","chocolate3","dodgerblue3")
+names(color_markers_SCs_fin) = names(cell_markers_SCs_fin)
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type_SCs", label = FALSE, cols = color_markers_SCs_fin, pt.size = 0.5) +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+
+```{r annot_global, class.source = "fold-hide"}
+cell_markers_SCs = list(
+  "Myelinating schwann cells" = c("Sox10", "Plp1", "S100b", "Lgi4", "Mpz","Pmp22","Mal","Egr2"),
+  "Non myelinating schwann cells" = c("Sox10", "Plp1", "S100b", "Lgi4","Gap43","Ngfr","Scn7a"),
+  "NA" = c("Fabp4", "Ebf1", "Mast4", "Rgs5","Epcam"))
+
+color_markers_SCs = aquarius::c30_palette[c(1:length(cell_markers))]
+names(color_markers_SCs) = names(cell_markers_SCs)
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type", label = FALSE, cols = color_markers, pt.size = 0.5) +
+  Seurat::NoLegend() +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+
+```{r axonal_guidance_cues_list, fig.width =50, fig.height = 7}
+all_genes = sobj@assays[["RNA"]]@counts %>% rownames()
+Semaphorins = grep(all_genes, pattern = "^Sema", value = TRUE)
+Plexins = grep(all_genes, pattern = "^Plxn", value = TRUE)
+Netrins = grep(all_genes, pattern = "^Ntn", value = TRUE)
+Neurotrophic = c("Ngf","Gdnf","Ntf3","Ntf4","Ntf5")
+
+EFN = grep(all_genes, pattern = "^Efn", value = TRUE)
+EPH = grep(all_genes, pattern = "^Eph", value = TRUE)
+Plexins = c("Plxna1","Plxna2","Plxna3","Plxna4a","Plxnb1","Plxnb2","Plxnb3","Plxnc1","Plxnd1")
+Slit = c("Slit1","Slit2","Slit3")
+
+Axon_genes = c(Semaphorins, Plexins, Netrins, Neurotrophic, EFN, EPH, Plexins, Slit)
+sobj$Axon_score = Seurat::AddModuleScore(sobj, features = list(Axon_genes))$Cluster1
+```
+
+```{r collagen_score_vln_plot, fig.width = 22, fig.height = 7}
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+
+colors = c("purple2","orchid2","firebrick2","orange2", "chartreuse2","cadetblue2")
+
+Seurat::Idents(sobj) = sobj$cluster_type_SCs
+
+Seurat::VlnPlot(subset(sobj, idents = "Proliferating nmSCs", invert = TRUE), features = c("Axon_score"), split.by= "sample_type", group.by ="cluster_type_SCs", cols = colors, pt.size = 0, ncol =1)  + ggplot2::geom_boxplot(position = position_dodge(0.90), width=0.15, outlier.shape = NA, fatten = NULL) + ggplot2::stat_summary(fun=mean, geom="point", color="black", position = position_dodge(0.90), width=0.3)
+```
+
+```{r collagen_score_feature_plot_split, fig.width = 22, fig.height = 7}
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        color_by = "Axon_score",
+                                        split_by = "sample_type",
+                                        bg_pt_size = 0.5,
+                                        main_pt_size = 0.5)
+
+plot_list = lapply(plot_list, FUN = function(one_plot) {
+  one_plot = one_plot +
+    ggplot2::scale_color_gradientn(colors = aquarius::color_gene,
+                                 name = "Expression level") +
+  # ggplot2::theme(legend.key.height = unit(5,"mm"),
+  #                legend.key.width = unit(5,"mm"),
+  #                legend.title = element_text(size = 20),
+  #                legend.text = element_text(size = 20)) +
+  ggplot2::theme(aspect.ratio = 0.8)
+  return(one_plot)
+})
+
+names(plot_list) = levels(sobj$sample_type)
+plot_list = plot_list[c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365")]
+patchwork::wrap_plots(plot_list, ncol = 3)
+```
+
+
+
+
+
+
+```{r collagen_score_vln_plot, fig.width = 22, fig.height = 7}
+Axon_genes = c(Semaphorins, Plexins, Netrins, Neurotrophic, EFN, EPH, Plexins, Slit)
+sobj$GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS = Seurat::AddModuleScore(sobj, features = list(GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS))$Cluster1
+
+
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+
+colors = c("purple2","orchid2","firebrick2","orange2", "chartreuse2","cadetblue2")
+
+Seurat::Idents(sobj) = sobj$cluster_type_SCs
+
+Seurat::VlnPlot(subset(sobj, idents = "Proliferating nmSCs", invert = TRUE), features = c("GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS"), split.by= "sample_type", group.by ="cluster_type_SCs", cols = colors, pt.size = 0, ncol =1)  + ggplot2::geom_boxplot(position = position_dodge(0.90), width=0.15, outlier.shape = NA, fatten = NULL) + ggplot2::stat_summary(fun=mean, geom="point", color="black", position = position_dodge(0.90), width=0.3)
+```
+
+```{r diff_expression, fig.width =50, fig.height = 7}
+sobj$condition_SCs = paste0(sobj$cluster_type_SCs, "_",sobj$sample_type)
+Seurat::Idents(sobj) = sobj$condition_SCs
+
+markP365 = Seurat::FindMarkers(sobj, ident.1 = c("Subepidermal glia_flfl_cNFs_P365"), ident.2 = c("Subepidermal glia_flfl_HLS_P365")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0) 
+
+markP90 = Seurat::FindMarkers(sobj, ident.1 = c("Subepidermal glia_flfl_cNFs_P90"), ident.2 = c("Subepidermal glia_flfl_HLS_P90")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0)
+```
+
+
+```{r axonal_cues}
+library(readxl)
+axonal_cues = read_excel("/home/aurelien/Bureau/scRNAseq_Tom_cells/6_analyse/Axonal_guidance_cues.xlsx")
+
+SemaP90 = intersect(axonal_cues$Semaphorins, rownames(markP90))
+SemaP365 = intersect(axonal_cues$Semaphorins, rownames(markP365))
+Sema = unique(c(SemaP90,SemaP365))
+
+NetrinP90 = intersect(axonal_cues$'Netrin-related', rownames(markP90))
+NetrinP365 = intersect(axonal_cues$'Netrin-related', rownames(markP365))
+Netrin = unique(c(NetrinP90,NetrinP365))
+
+RoboP90 = intersect(axonal_cues$'Robos', rownames(markP90))
+RoboP365 = intersect(axonal_cues$'Robos', rownames(markP365))
+Robo = unique(c(RoboP90,RoboP365))
+
+SlitP90 = intersect(axonal_cues$'Slits', rownames(markP90))
+SlitP365 = intersect(axonal_cues$'Slits', rownames(markP365))
+Slit = unique(c(SlitP90,SlitP365))
+
+EfnP90 = intersect(axonal_cues$'Ephrins', rownames(markP90))
+EfnP365 = intersect(axonal_cues$'Ephrins', rownames(markP365))
+Efn = unique(c(EfnP90,EfnP365))
+
+EphP90 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP90))
+EphP365 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP365))
+Eph = unique(c(EphP90,EphP365))
+
+NFP90 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP90))
+NFP365 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP365))
+NF = unique(c(NFP90,NFP365))
+
+CAMP90 = intersect(axonal_cues$'CAMs', rownames(markP90))
+CAMP365 = intersect(axonal_cues$'CAMs', rownames(markP365))
+CAM = unique(c(CAMP90,CAMP365))
+
+PlxP90 = intersect(axonal_cues$'Plexins', rownames(markP90))
+PlxP365 = intersect(axonal_cues$'Plexins', rownames(markP365))
+Plx = unique(c(PlxP90,PlxP365))
+
+NrplP90 = intersect(axonal_cues$'Neuropilins', rownames(markP90))
+NrplP365 = intersect(axonal_cues$'Neuropilins', rownames(markP365))
+Nrpl = unique(c(NrplP90,NrplP365))
+
+```
+
+```{r dotplot_axonal_cues_sum_up, fig.width = 20, fig.height = 7.5}
+Seurat::Idents(sobj) = sobj$sample_type
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+# subsobj1 = subset(sobj, idents = c("ctrl_HS_P90","ctrl_HS_P365"), invert = TRUE)
+# subsobj1$sample_type = factor(subsobj1$sample_type, levels = c("flfl_HLS_P90","flfl_cNFs_P90","flfl_cNFs_P365","flfl_HLS_P365"))
+
+Seurat::Idents(sobj) = sobj$cluster_type_SCs
+Seurat::DotPlot(subset(sobj,idents = c("Subepidermal glia")),
+                features = c(Sema, Netrin, Robo, Slit, Efn, Eph, NF, CAM, Plx, Nrpl),
+                group.by = "sample_type", dot.scale = 15) +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene) +
+  ggplot2::theme(axis.title = element_blank(),
+                 legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 25),
+                 legend.text = element_text(size = 25),
+                 axis.text = element_text(size = 30),
+                 axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggplot2::theme(aspect.ratio = 0.3)
+```
+
+
+```{r diff_expression_downregulated, fig.width =50, fig.height = 7}
+sobj$condition_SCs = paste0(sobj$cluster_type_SCs, "_",sobj$sample_type)
+Seurat::Idents(sobj) = sobj$condition_SCs
+
+markP365 = Seurat::FindMarkers(sobj, ident.1 = c("Subepidermal glia_flfl_cNFs_P365"), ident.2 = c("Subepidermal glia_flfl_HLS_P365")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC < 0) 
+
+markP90 = Seurat::FindMarkers(sobj, ident.1 = c("Subepidermal glia_flfl_cNFs_P90"), ident.2 = c("Subepidermal glia_flfl_HLS_P90")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC < 0)
+```
+
+
+```{r axonal_cues_downregulated}
+library(readxl)
+axonal_cues = read_excel("/home/aurelien/Bureau/scRNAseq_Tom_cells/6_analyse/Axonal_guidance_cues.xlsx")
+
+SemaP90 = intersect(axonal_cues$Semaphorins, rownames(markP90))
+SemaP365 = intersect(axonal_cues$Semaphorins, rownames(markP365))
+Sema = unique(c(SemaP90,SemaP365))
+
+NetrinP90 = intersect(axonal_cues$'Netrin-related', rownames(markP90))
+NetrinP365 = intersect(axonal_cues$'Netrin-related', rownames(markP365))
+Netrin = unique(c(NetrinP90,NetrinP365))
+
+RoboP90 = intersect(axonal_cues$'Robos', rownames(markP90))
+RoboP365 = intersect(axonal_cues$'Robos', rownames(markP365))
+Robo = unique(c(RoboP90,RoboP365))
+
+SlitP90 = intersect(axonal_cues$'Slits', rownames(markP90))
+SlitP365 = intersect(axonal_cues$'Slits', rownames(markP365))
+Slit = unique(c(SlitP90,SlitP365))
+
+EfnP90 = intersect(axonal_cues$'Ephrins', rownames(markP90))
+EfnP365 = intersect(axonal_cues$'Ephrins', rownames(markP365))
+Efn = unique(c(EfnP90,EfnP365))
+
+EphP90 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP90))
+EphP365 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP365))
+Eph = unique(c(EphP90,EphP365))
+
+NFP90 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP90))
+NFP365 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP365))
+NF = unique(c(NFP90,NFP365))
+
+CAMP90 = intersect(axonal_cues$'CAMs', rownames(markP90))
+CAMP365 = intersect(axonal_cues$'CAMs', rownames(markP365))
+CAM = unique(c(CAMP90,CAMP365))
+
+PlxP90 = intersect(axonal_cues$'Plexins', rownames(markP90))
+PlxP365 = intersect(axonal_cues$'Plexins', rownames(markP365))
+Plx = unique(c(PlxP90,PlxP365))
+
+NrplP90 = intersect(axonal_cues$'Neuropilins', rownames(markP90))
+NrplP365 = intersect(axonal_cues$'Neuropilins', rownames(markP365))
+Nrpl = unique(c(NrplP90,NrplP365))
+
+```
+
+```{r dotplot_down_regulated_axonal_cues_sum_up, fig.width = 20, fig.height = 7.5}
+Seurat::Idents(sobj) = sobj$sample_type
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+subsobj1 = subset(sobj, idents = c("ctrl_HS_P90","ctrl_HS_P365"), invert = TRUE)
+subsobj1$sample_type = factor(subsobj1$sample_type, levels = c("flfl_HLS_P90","flfl_cNFs_P90","flfl_cNFs_P365","flfl_HLS_P365"))
+
+Seurat::Idents(subsobj1) = subsobj1$cluster_type_SCs
+Seurat::DotPlot(subset(subsobj1,idents = c("Subepidermal glia")),
+                features = c(Sema, Netrin, Robo, Slit, Efn, Eph, NF, CAM, Plx, Nrpl),
+                group.by = "sample_type", dot.scale = 15) +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene) +
+  ggplot2::theme(axis.title = element_blank(),
+                 legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 25),
+                 legend.text = element_text(size = 25),
+                 axis.text = element_text(size = 30),
+                 axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggplot2::theme(aspect.ratio = 0.3)
+```
+
+
+
+```{r diff_expression_other_nmSCs, fig.width =50, fig.height = 7}
+sobj$condition_SCs = paste0(sobj$cluster_type_SCs, "_",sobj$sample_type)
+Seurat::Idents(sobj) = sobj$condition_SCs
+
+markP365 = Seurat::FindMarkers(sobj, ident.1 = c("Other nmSCs_flfl_cNFs_P365"), ident.2 = c("Other nmSCs_flfl_HLS_P365")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0) 
+
+markP90 = Seurat::FindMarkers(sobj, ident.1 = c("Other nmSCs_flfl_cNFs_P90"), ident.2 = c("Other nmSCs_flfl_HLS_P90")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0)
+```
+
+
+```{r axonal_cues_other_nmSCs}
+SemaP90 = intersect(axonal_cues$Semaphorins, rownames(markP90))
+SemaP365 = intersect(axonal_cues$Semaphorins, rownames(markP365))
+Sema = unique(c(SemaP90,SemaP365))
+
+NetrinP90 = intersect(axonal_cues$'Netrin-related', rownames(markP90))
+NetrinP365 = intersect(axonal_cues$'Netrin-related', rownames(markP365))
+Netrin = unique(c(NetrinP90,NetrinP365))
+
+RoboP90 = intersect(axonal_cues$'Robos', rownames(markP90))
+RoboP365 = intersect(axonal_cues$'Robos', rownames(markP365))
+Robo = unique(c(RoboP90,RoboP365))
+
+SlitP90 = intersect(axonal_cues$'Slits', rownames(markP90))
+SlitP365 = intersect(axonal_cues$'Slits', rownames(markP365))
+Slit = unique(c(SlitP90,SlitP365))
+
+EfnP90 = intersect(axonal_cues$'Ephrins', rownames(markP90))
+EfnP365 = intersect(axonal_cues$'Ephrins', rownames(markP365))
+Efn = unique(c(EfnP90,EfnP365))
+
+EphP90 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP90))
+EphP365 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP365))
+Eph = unique(c(EphP90,EphP365))
+
+NFP90 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP90))
+NFP365 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP365))
+NF = unique(c(NFP90,NFP365))
+
+CAMP90 = intersect(axonal_cues$'CAMs', rownames(markP90))
+CAMP365 = intersect(axonal_cues$'CAMs', rownames(markP365))
+CAM = unique(c(CAMP90,CAMP365))
+
+PlxP90 = intersect(axonal_cues$'Plexins', rownames(markP90))
+PlxP365 = intersect(axonal_cues$'Plexins', rownames(markP365))
+Plx = unique(c(PlxP90,PlxP365))
+
+NrplP90 = intersect(axonal_cues$'Neuropilins', rownames(markP90))
+NrplP365 = intersect(axonal_cues$'Neuropilins', rownames(markP365))
+Nrpl = unique(c(NrplP90,NrplP365))
+
+```
+
+```{r dotplot_axonal_cues_other_nmSCs_sum_up, fig.width = 20, fig.height = 7.5}
+Seurat::Idents(sobj) = sobj$sample_type
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+subsobj1 = subset(sobj, idents = c("ctrl_HS_P90","ctrl_HS_P365"), invert = TRUE)
+subsobj1$sample_type = factor(subsobj1$sample_type, levels = c("flfl_HLS_P90","flfl_cNFs_P90","flfl_cNFs_P365","flfl_HLS_P365"))
+
+Seurat::Idents(subsobj1) = subsobj1$cluster_type_SCs
+Seurat::DotPlot(subset(subsobj1,idents = c("Other nmSCs")),
+                features = c(Sema, Netrin, Robo, Slit, Efn, Eph, NF, CAM, Plx, Nrpl),
+                group.by = "sample_type", dot.scale = 15) +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene) +
+  ggplot2::theme(axis.title = element_blank(),
+                 legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 25),
+                 legend.text = element_text(size = 25),
+                 axis.text = element_text(size = 30),
+                 axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggplot2::theme(aspect.ratio = 0.3)
+```
+
+```{r genes_exploration_feature_plot_split, fig.width = 22, fig.height = 7}
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        color_by = "Nes",
+                                        split_by = "sample_type",
+                                        bg_pt_size = 0.5,
+                                        main_pt_size = 0.5)
+
+plot_list = lapply(plot_list, FUN = function(one_plot) {
+  one_plot = one_plot +
+    ggplot2::scale_color_gradientn(colors = aquarius::color_gene,
+                                 name = "Expression level") +
+  # ggplot2::theme(legend.key.height = unit(5,"mm"),
+  #                legend.key.width = unit(5,"mm"),
+  #                legend.title = element_text(size = 20),
+  #                legend.text = element_text(size = 20)) +
+  ggplot2::theme(aspect.ratio = 0.8)
+  return(one_plot)
+})
+
+names(plot_list) = levels(sobj$sample_type)
+plot_list = plot_list[c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365")]
+patchwork::wrap_plots(plot_list, ncol = 3)
+```
+
+
+```{r diff_expression, fig.width =50, fig.height = 7}
+sobj$condition_SCs = paste0(sobj$cluster_type, "_",sobj$sample_type)
+Seurat::Idents(sobj) = sobj$condition_SCs
+
+markP365 = Seurat::FindMarkers(sobj, ident.1 = c("Non myelinating schwann cells_flfl_cNFs_P365"), ident.2 = c("Non myelinating schwann cells_flfl_HLS_P365")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0) 
+
+markP90 = Seurat::FindMarkers(sobj, ident.1 = c("Non myelinating schwann cells_flfl_cNFs_P90"), ident.2 = c("Non myelinating schwann cells_flfl_HLS_P90")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0)
+```
+
+
+```{r axonal_cues}
+library(readxl)
+axonal_cues = read_excel("/home/aurelien/Bureau/scRNAseq_Tom_cells/6_analyse/Axonal_guidance_cues.xlsx")
+
+SemaP90 = intersect(axonal_cues$Semaphorins, rownames(markP90))
+SemaP365 = intersect(axonal_cues$Semaphorins, rownames(markP365))
+Sema = unique(c(SemaP90,SemaP365))
+
+NetrinP90 = intersect(axonal_cues$'Netrin-related', rownames(markP90))
+NetrinP365 = intersect(axonal_cues$'Netrin-related', rownames(markP365))
+Netrin = unique(c(NetrinP90,NetrinP365))
+
+RoboP90 = intersect(axonal_cues$'Robos', rownames(markP90))
+RoboP365 = intersect(axonal_cues$'Robos', rownames(markP365))
+Robo = unique(c(RoboP90,RoboP365))
+
+SlitP90 = intersect(axonal_cues$'Slits', rownames(markP90))
+SlitP365 = intersect(axonal_cues$'Slits', rownames(markP365))
+Slit = unique(c(SlitP90,SlitP365))
+
+EfnP90 = intersect(axonal_cues$'Ephrins', rownames(markP90))
+EfnP365 = intersect(axonal_cues$'Ephrins', rownames(markP365))
+Efn = unique(c(EfnP90,EfnP365))
+
+EphP90 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP90))
+EphP365 = intersect(axonal_cues$'Ephrin_receptors', rownames(markP365))
+Eph = unique(c(EphP90,EphP365))
+
+NFP90 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP90))
+NFP365 = intersect(axonal_cues$'Neurotrophic_factors', rownames(markP365))
+NF = unique(c(NFP90,NFP365))
+
+CAMP90 = intersect(axonal_cues$'CAMs', rownames(markP90))
+CAMP365 = intersect(axonal_cues$'CAMs', rownames(markP365))
+CAM = unique(c(CAMP90,CAMP365))
+
+PlxP90 = intersect(axonal_cues$'Plexins', rownames(markP90))
+PlxP365 = intersect(axonal_cues$'Plexins', rownames(markP365))
+Plx = unique(c(PlxP90,PlxP365))
+
+NrplP90 = intersect(axonal_cues$'Neuropilins', rownames(markP90))
+NrplP365 = intersect(axonal_cues$'Neuropilins', rownames(markP365))
+Nrpl = unique(c(NrplP90,NrplP365))
+
+```
+
+```{r dotplot_axonal_cues_sum_up, fig.width = 20, fig.height = 7.5}
+Seurat::Idents(sobj) = sobj$sample_type
+sobj$sample_type = factor(sobj$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","ctrl_HS_P365","flfl_HLS_P365","flfl_cNFs_P365"))
+# subsobj1 = subset(sobj, idents = c("ctrl_HS_P90","ctrl_HS_P365"), invert = TRUE)
+# subsobj1$sample_type = factor(subsobj1$sample_type, levels = c("flfl_HLS_P90","flfl_cNFs_P90","flfl_cNFs_P365","flfl_HLS_P365"))
+
+Seurat::Idents(sobj) = sobj$cluster_type
+Seurat::DotPlot(subset(sobj,idents = c("Non myelinating schwann cells")),
+                features = c(Sema, Netrin, Robo, Slit, Efn, Eph, NF, CAM, Plx, Nrpl),
+                group.by = "sample_type", dot.scale = 15) +
+  ggplot2::scale_color_gradientn(colors = aquarius::color_gene) +
+  ggplot2::theme(axis.title = element_blank(),
+                 legend.key.height = unit(10,"mm"),
+                 legend.key.width = unit(10,"mm"),
+                 legend.title = element_text(size = 25),
+                 legend.text = element_text(size = 25),
+                 axis.text = element_text(size = 30),
+                 axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggplot2::theme(aspect.ratio = 0.3)
+```
+
+
+```{r split_object_SG}
+sobj$condition_SCs = paste0(sobj$cluster_type, "_",sobj$sample_type)
+Seurat::Idents(sobj) = sobj$condition_SCs
+
+mark_nmSCs_P365 = Seurat::FindMarkers(sobj, ident.1 = c("Non myelinating schwann cells_flfl_cNFs_P365"), ident.2 = c("Non myelinating schwann cells_flfl_HLS_P365")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0) 
+
+mark_nmSCs_P90 = Seurat::FindMarkers(sobj, ident.1 = c("Non myelinating schwann cells_flfl_cNFs_P90"), ident.2 = c("Non myelinating schwann cells_flfl_HLS_P90")) %>%
+  as.data.frame() %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0) 
+
+unlist(rownames(mark_nmSCs_P365))
+```
+
+
+We keep all up-regulated or down-regulated genes.+
+
+```{r DeSEQ2_results}
+up_genes = rownames(mark_nmSCs_P90)
+
+```
+
+
+
+## ORA and GSEA
+
+We make over-representation analysis for each group of genes. We load gene sets from MSigDB :
+
+```{r gene_sets}
+gene_sets = aquarius::get_gene_sets()
+# gene_sets_full = gene_sets$gene_sets_full
+# long_names = gene_sets$long_names
+gene_sets = gene_sets$gene_sets
+head(gene_sets)
+```
+
+We get gene name and gene ID correspondence :
+
+```{r gene_corresp}
+gene_corresp = read.csv("/home/aurelien/Bureau/scRNAseq_Tom_cells/gene_corresp.csv", row.names = 1)
+head(gene_corresp)
+```
+
+## Up-regulated genes
+
+We explore enrichment in gene sets :
+
+```{r enrichr_results_up, fig.width = 12, fig.height = 8}
+
+genes_of_interest = up_genes
+
+enrichr_results = aquarius::run_enrichr(gene_names = genes_of_interest,
+                                        gene_corresp = gene_corresp[, c("NAME", "ENSEMBL")],
+                                        gene_sets = gene_sets[, c("gs_name","ensembl_gene")],
+                                        make_plot = TRUE,
+                                        plot_title = "Up-regulated genes in cNFs cells compared to HLS - P90")
+
+enrichr_results$plot +
+  ggplot2::theme(axis.text.y = element_text(size = 8))
+```
+
+We run a GSEA with differentially expressed gene sets :
+
+```{r gsea_P90_cNFs_vs_HLS, fig.width = 15, fig.height = 90}
+
+sobj$condition_SCs = paste0(sobj$cell_type, "_",sobj$sample_type)
+Seurat::Idents(sobj) = sobj$condition_SCs
+
+ranked_gene_list = aquarius::run_foldchange(
+  Seurat::GetAssayData(sobj, assay = "RNA", slot = "counts"),
+  group1 = names(which(sobj$`condition_SCs` == c("Non myelinating schwann cells_flfl_HLS_P90"))),
+  group2 = names(which(sobj$`condition_SCs` == c("Non myelinating schwann cells_flfl_cNFs_P90"))))
+
+names(ranked_gene_list) = gene_corresp$ENSEMBL
+
+gsea_results = aquarius::gsea_run(ranked_gene_list = ranked_gene_list,
+                                  gene_sets = gene_sets[, c("gs_name", "ensembl_gene")],
+                                  GSEA_p_val_thresh = 1)
+
+gsea_results@result %>%
+  dplyr::filter(pvalue < 0.05) %>%
+  aquarius::gsea_plot(show_legend = TRUE) +
+  ggplot2::labs(title = "GSEA using all genes (count matrix)") +
+  ggplot2::theme(plot.title = element_text(size = 20))
+```
+
+We visualize the GSEA using cluster profiler:
+
+```{r cluster_profiler, fig.width = 12, fig.height = 6}
+AXON = unlist(grep(gsea_results@result[["ID"]], pattern = "AXON", value = TRUE))
+enrichplot::gseaplot2(gsea_results, geneSetID=AXON)
+AXON = AXON %>%
+  as.data.frame()
+
+AXON = AXON[c(1,2,3,4,8,9,11,13,16,17,22,29,30,33,34,35,36,41,46,48,50),]
+
+AXON = droplevels(AXON)
+
+gsea_results@geneSets[["GOBP_POSITIVE_REGULATION_OF_AXON_EXTENSION"]]
+
+enrichplot::gseaplot2(gsea_results, geneSetID="KEGG_AXON_GUIDANCE") #BIEN
+enrichplot::gseaplot2(gsea_results, geneSetID="REACTOME_REGULATION_OF_COMMISSURAL_AXON_PATHFINDING_BY_SLIT_AND_ROBO") #nul
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_AXONOGENESIS_INVOLVED_IN_INNERVATION") #nul
+enrichplot::gseaplot2(gsea_results, geneSetID="GOCC_AXONAL_GROWTH_CONE") #nul
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_NEGATIVE_REGULATION_OF_AXON_EXTENSION_INVOLVED_IN_AXON_GUIDANCE") #moyen
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_NEGATIVE_REGULATION_OF_AXON_EXTENSION_INVOLVED_IN_AXON_GUIDANCE")
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_REGULATION_OF_AXON_GUIDANCE")
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_AXON_DEVELOPMENT") # BIEN
+enrichplot::gseaplot2(gsea_results, geneSetID="REACTOME_SEMA3A_PAK_DEPENDENT_AXON_REPULSION")
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_AXON_EXTENSION") # pas trop mal
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_REGULATION_OF_AXON_DIAMETER") #nul
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_NEGATIVE_REGULATION_OF_AXON_EXTENSION") #bien mais contradictoire
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_PERIPHERAL_NERVOUS_SYSTEM_AXON_REGENERATION") # nul
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_REGULATION_OF_AXONOGENESIS") #pas trop mal
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_POSITIVE_REGULATION_OF_AXONOGENESIS") #pas trop mal
+enrichplot::gseaplot2(gsea_results, geneSetID="GOMF_AXON_GUIDANCE_RECEPTOR_ACTIVITY")#nul
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_POSITIVE_REGULATION_OF_AXON_EXTENSION") #bof moyen
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS") #bien mais contradictoire
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_AXONAL_FASCICULATION") # nul
+enrichplot::gseaplot2(gsea_results, geneSetID="REACTOME_P75NTR_REGULATES_AXONOGENESIS") #nul
+enrichplot::gseaplot2(gsea_results, geneSetID="KEGG_AXON_GUIDANCE")
+
+
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_POSITIVE_REGULATION_OF_AXON_EXTENSION")
+
+enrichplot::gseaplot2(gsea_results, geneSetID="GOBP_REGULATION_OF_NEURON_PROJECTION_DEVELOPMENT")
+```
+
+```{r cluster_profiler, fig.width = 12, fig.height = 6}
+GOBP_AXON_EXTENSION = gsea_results@geneSets[["GOBP_AXON_EXTENSION"]]
+GOBP_AXON_EXTENSION = as.vector(gene_corresp[gene_corresp$ENSEMBL %in% GOBP_AXON_EXTENSION, "NAME"])
+GOBP_AXON_EXTENSION = intersect(rownames(mark_nmSCs_P90), GOBP_AXON_EXTENSION)
+
+
+GOBP_POSITIVE_REGULATION_OF_AXONOGENESIS = gsea_results@geneSets[["GOBP_POSITIVE_REGULATION_OF_AXONOGENESIS"]]
+GOBP_POSITIVE_REGULATION_OF_AXONOGENESIS = as.vector(gene_corresp[gene_corresp$ENSEMBL %in% GOBP_POSITIVE_REGULATION_OF_AXONOGENESIS, "NAME"])
+GOBP_POSITIVE_REGULATION_OF_AXONOGENESIS = intersect(rownames(mark_nmSCs_P90), GOBP_POSITIVE_REGULATION_OF_AXONOGENESIS)
+
+
+KEGG_AXON_GUIDANCE = gsea_results@geneSets[["KEGG_AXON_GUIDANCE"]]
+KEGG_AXON_GUIDANCE = as.vector(gene_corresp[gene_corresp$ENSEMBL %in% KEGG_AXON_GUIDANCE, "NAME"])
+KEGG_AXON_GUIDANCE = intersect(rownames(mark_nmSCs_P90), KEGG_AXON_GUIDANCE)
+
+KEGG_AXON_GUIDANCE = gsea_results@geneSets[["KEGG_AXON_GUIDANCE"]]
+KEGG_AXON_GUIDANCE = as.vector(gene_corresp[gene_corresp$ENSEMBL %in% list, "NAME"])
+intersect(rownames(mark_nmSCs_P90), list2)
+
+GOBP_AXON_DEVELOPMENT = gsea_results@geneSets[["GOBP_AXON_DEVELOPMENT"]]
+GOBP_AXON_DEVELOPMENT = as.vector(gene_corresp[gene_corresp$ENSEMBL %in% GOBP_AXON_DEVELOPMENT, "NAME"])
+GOBP_AXON_DEVELOPMENT = intersect(rownames(mark_nmSCs_P90), GOBP_AXON_DEVELOPMENT)
+
+GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS = gsea_results@geneSets[["GOBP_AXON_DEVELOPMENT"]]
+GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS = as.vector(gene_corresp[gene_corresp$ENSEMBL %in% GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS, "NAME"])
+GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS = intersect(rownames(mark_nmSCs_P90), GOBP_NEGATIVE_REGULATION_OF_AXONOGENESIS)
+```
+
+We run a GSEA with complete gene sets :
+
+```{r gsea_test_clusters_2_vs_1, fig.width = 12, fig.height = 60}
+sobj$condition_SCs = paste0(sobj$cell_type, "_",sobj$sample_type)
+Seurat::Idents(sobj) = sobj$condition_SCs
+
+ranked_gene_list = aquarius::run_foldchange(
+  Seurat::GetAssayData(sobj, assay = "RNA", slot = "counts"),
+  group1 = names(which(sobj$`condition_SCs` == c("Non myelinating schwann cells_flfl_HLS_P90"))),
+  group2 = names(which(sobj$`condition_SCs` == c("Non myelinating schwann cells_flfl_cNFs_P90"))))
+
+names(ranked_gene_list) = ifelse(is.na(gene_corresp[names(ranked_gene_list), "ENTREZID"]),
+                                 yes = names(ranked_gene_list),
+                                 no = gene_corresp[names(ranked_gene_list), "ENTREZID"])
+
+gene_set_all= unique(gene_sets$gs_name)
+gene_sets_df = gene_sets[gene_sets$gs_name %in%
+                           gene_set_all, c("gs_name", "entrez_gene")]
+gene_sets_df = na.omit(gene_sets_df)
+gene_sets_df = gene_sets_df[gene_sets_df$gs_name %in% names(which(table(gene_sets_df$gs_name) > 5)), ]
+
+gsea_results = aquarius::gsea_run(ranked_gene_list = ranked_gene_list,
+                                  gene_sets = gene_sets_df,
+                                  GSEA_p_val_thresh = 1)
+
+gsea_results_p <- gsea_results@result %>%
+  dplyr::filter(pvalue < 0.05)
+
+list_results[["All"]]$gsea_up = gsea_results@result %>%
+  dplyr::filter(pvalue < 0.05, enrichmentScore > 0)
+
+list_results[["All"]]$gsea_down = gsea_results@result %>%
+  dplyr::filter(pvalue < 0.05, enrichmentScore < 0)
+
+
+gsea_results@result %>%
+  dplyr::filter(pvalue < 0.05) %>%
+  aquarius::gsea_plot(show_legend = TRUE) +
+  ggplot2::labs(title = "GSEA using all genes (count matrix)") +
+  ggplot2::theme(plot.title = element_text(size = 20))
+
+```
+
+
+```{r heatmap_set_sobj_SG, fig.width = 22, fig.height = 6}
+Seurat::Idents(sobj) = sobj$cell_type
+subsobj_HM = subset(sobj, idents = "Non myelinating schwann cells")
+
+subsobj_HM$sample_type = factor(subsobj_HM$sample_type, levels = c("ctrl_HS_P90","flfl_HLS_P90","flfl_cNFs_P90","flfl_cNFs_P365","flfl_HLS_P365","ctrl_HS_P365"))
+```
+
+
+```{r heatmap_set_genes_SG, fig.width = 22, fig.height = 6}
+genes_heatmap = list(group01 = KEGG_AXON_GUIDANCE)
+
+
+features_group = sapply(c(1:length(genes_heatmap)),
+                        FUN = function(i) {
+                          rep(x = names(genes_heatmap)[i],
+                              length = length(genes_heatmap[[i]]))}) %>% unlist() %>% as.vector()
+features = unique(unlist(genes_heatmap))
+
+```
+
+```{r heatmap_set_matrix_SG, fig.width = 22, fig.height = 6}
+
+mat_expression = Seurat::GetAssayData(subsobj_HM, assay = "RNA", slot = "data")
+mat_expression = mat_expression[features, ]
+mat_expression = Matrix::t(mat_expression)
+mat_expression = dynutils::scale_quantile(mat_expression) # between 0 and 1
+mat_expression = Matrix::t(mat_expression)
+dim(mat_expression)
+```
+
+```{r heatmap_set_annotation_SG, fig.width = 22, fig.height = 6}
+list_colors = list()
+list_colors[["expression"]] = aquarius::color_cnv
+
+# change colors !!
+list_colors[["sample_type"]] = c(ctrl_HS_P90 = "white",
+                                 flfl_HLS_P90 = "white",
+                                 flfl_cNFs_P90 = "white",
+                                 flfl_cNFs_P365 = "white",
+                                 flfl_HLS_P365 = "white",
+                                 ctrl_HS_P365 = "white")
+list_colors[["sample_identifier"]] = setNames(nm = sample_info$sample_identifier,
+                                              sample_info$color)
+list_colors[["cell_cycle_phase"]] = aquarius::gg_color_hue(3)
+names(list_colors[["cell_cycle_phase"]]) = c("G0 / G1", "G2M", "S")
+list_colors[["percent_mito"]] = circlize::colorRamp2(breaks = seq(from = min(subsobj_HM$percent.mt),
+                                                                  to = max(sobj$percent.mt),
+                                                                  length.out = 9),
+                                                     colors = RColorBrewer::brewer.pal(name = "Greys", n = 9))
+list_colors[["nFeature_RNA"]] = circlize::colorRamp2(breaks = seq(from = min(subsobj_HM$nFeature_RNA),
+                                                                  to = max(subsobj_HM$nFeature_RNA),
+                                                                  length.out = 9),
+                                                     colors = RColorBrewer::brewer.pal(name = "Greys", n = 9))
+```
+
+```{r heatmap_set_color_SG, fig.width = 22, fig.height = 6}
+name_side = "right"
+ha_top = HeatmapAnnotation(
+  group = anno_block(gp = gpar(fill = list_colors[["sample_type"]]),
+                     labels = sort(unique(subsobj_HM$sample_type))
+                     ),
+  sample_identifier = subsobj_HM$sample_identifier,
+  col = list(sample_identifier = list_colors[["sample_identifier"]]),
+  annotation_name_side = name_side)
+
+ha_bottom = HeatmapAnnotation(
+  percent_mito = subsobj_HM$percent.mt,
+  nFeature_RNA = subsobj_HM$nFeature_RNA,
+  # cell_cycle_phase = as.factor(subsobj_HM$Seurat.Phase) %>% `levels<-`(c("G0 / G1", "G2M", "S")),
+  col = list(percent_mito = list_colors[["percent_mito"]],
+             nFeature_RNA = list_colors[["nFeature_RNA"]]),
+             # cell_cycle_phase = list_colors[["cell_cycle_phase"]]),
+  annotation_name_side = name_side)
+```
+
+```{r heatmap_set_SG, fig.width = 22, fig.height = 6}
+ht = ComplexHeatmap::Heatmap(
+  as.matrix(mat_expression),
+  # Expression colors
+  col = list_colors[["expression"]],
+  heatmap_legend_param = list(title = "Expression", at = c(0, 1), 
+                              labels = c("low", "high")),
+  # Annotation
+  top_annotation = ha_top,
+  bottom_annotation = ha_bottom,
+  # Cells grouping
+  column_split = subsobj_HM$sample_type,
+  column_gap = unit(2, "mm"),
+  column_title = NULL,
+  # Cells order
+  column_order = order(subsobj_HM$sample_type),
+  cluster_columns = FALSE, #faire un clustering des cellules
+  show_column_dend = FALSE, #montrer l'arbre du clustering (dendrogramme)
+  # Cells label
+  show_column_names = FALSE,
+  # Gene grouping
+  row_split = features_group,
+  row_gap = unit(2, "mm"),
+  row_title = NULL,
+  cluster_rows = FALSE, #clusteriser les gènes à peu près co-exprimés
+  show_row_dend = FALSE, #montrer l'arbre du clustering (dendrogramme)
+  # Gene labels
+  row_labels = features,
+  show_row_names = TRUE,
+  row_names_side = name_side,
+  row_names_gp = grid::gpar(fontsize = 13), #customiser la taille du texte des noms des lignes
+  # Visual aspect
+  show_heatmap_legend = TRUE,
+  border = TRUE,
+  use_raster = FALSE)
+```
+
+```{r draw_heatmap_SG, fig.width = 22, fig.height = 15}
+ComplexHeatmap::draw(ht, # legend_grouping = "original",
+                     merge_legend = TRUE,
+                     heatmap_legend_side = "bottom",
+                     annotation_legend_side = "bottom")
+```
+
+
+# R Session
+
+```{r sessioninfo, echo = FALSE, fold_output = TRUE}
+sessionInfo()
+```
