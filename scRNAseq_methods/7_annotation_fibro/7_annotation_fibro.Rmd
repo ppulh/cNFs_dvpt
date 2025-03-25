@@ -1,0 +1,364 @@
+---
+title: "Comparison 3h vs 18h dissociation"
+subtitle: "Annotation_fibros_subtypes"
+author: "Pernelle"
+date: '2024-03-25'
+output:
+  html_document:
+    code_folding: show
+    code_download: true
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r clean, echo = FALSE}
+rm(list = ls())
+```
+
+<!-- Automatically computes and prints in the output the running time for any code chunk -->
+```{r, echo=FALSE}
+# https://github.com/rstudio/rmarkdown/issues/1453
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold_", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", "show", "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot"),
+  time_it = local({
+    now = NULL
+    function(before, options) {
+      if (options$time_it) {
+        if (before) {
+          now <= Sys.time()
+        } else {
+          res = difftime(Sys.time(), now, units = "secs")
+          paste("(Time to run :", round(res, digits = 2), "s)")
+        }
+      }
+    }
+  })
+)
+```
+
+<!-- Set default parameters for all chunks -->
+```{r, setup, include = FALSE}
+set.seed(1337L)
+knitr::opts_chunk$set(echo = TRUE, # display code
+                      # display chunk output
+                      message = FALSE,
+                      warning = FALSE,
+                      fold_output = FALSE, # usefull for sessionInfo()
+                      fold_plot = FALSE,
+                      
+                      # figure settings
+                      fig.align = 'center',
+                      fig.width = 20,
+                      fig.height = 15,
+                      
+                      # something about seed, chunk and Rmarkdown compilation
+                      # https://stackoverflow.com/questions/39417003/long-vectors-not-supported-yet-error-in-rmd-but-not-in-r-script
+                      # cache = TRUE,
+                      cache.lazy = FALSE, 
+                      
+                      # add runtime after chunk
+                      time_it = FALSE)
+```
+
+
+```{r library}
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+```
+
+# Preparation
+
+In this section, we set the global settings of the analysis. We will store data there :
+
+```{r out_dir}
+save_name = "fibro"
+out_dir = "."
+```
+
+We load the dataset :
+
+```{r load_sobj}
+sobj = readRDS(paste0(out_dir, "/../6_fibro_zoom/", save_name, "_sobj.rds"))
+sobj
+```
+
+and sample information :
+
+```{r load_sample_info}
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_sample_info.rds"))
+sample_info
+```
+
+This is the projection of interest :
+
+```{r name2D}
+name2D = "harmony_44_umap"
+```
+
+We load metadata :
+
+```{r load_metadata}
+color_markers = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_color_markers.rds"))
+cell_markers = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_cell_markers.rds"))
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_sample_info.rds"))
+```
+
+We visualize clusters :
+
+```{r cluster_vizualization, fig.width = 12, fig.height = 8, eval = FALSE}
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cell_type", label = FALSE, cols = color_markers, pt.size = 0.5) +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+We change the resolution of the dataset :
+
+```{r resolution}
+sobj = Seurat::FindClusters(sobj, resolution = 0.5)
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="seurat_clusters", label = TRUE, pt.size = 0.5, label.size = 15) +
+  Seurat::NoAxes() +
+  Seurat::NoLegend() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+# Cell types
+
+We define markers for each population of interest :
+
+```{r cell_markers, class.source = "fold-hide"}
+FB_markers = list("HF-FIB" = c("Pappa2","Corin","Ramp1","Tagln","Grem2","Wif1","Rasd1","Enpp2","Acta2","Nrg2","Cacna1c","Tpm1"),
+                  "DS-FIB" = c("Morrbid","Cilp","Fgl2","Id2","Gas7"),
+                  "Dermal-FIB" = c("Dcn", "Sparc","Col1a1","Lum"),
+                  "Hyp/Adv-FIB" = c("Cygb", "F3", "Gpx3","Gsn"),
+                  "Epi-FIB" = c("Dcn","Pcolce2","Ly6c1","Comp","Clec3b","Aebp1","Dpt"),
+                  "Peri-FIB" = c("Dcn","Itgb4","Clnd1","Itga6","Ildr2","Fxyd6"),
+                  "Endo-FIB" = c("Dcn", "Spp1","Sox9","Smoc2"),
+                  "Other cells" = c("Pax7","Myod1","Acta2","Des","Epcam","Krt1","Krt14","Pecam1","Ptprc","Scn7a","Mbp","Lyve1","Rapgef5","Cldn5","Ccl21a"))
+
+lengths(FB_markers)
+```
+
+Cell populations annotation with the new resolution : 
+
+Here are custom colors for each cell type :
+
+```{r color_markers_SC, fig.width = 8, fig.height = 0.8, class.source = "fold-hide"}
+color_markers_FB = c("mediumpurple2","mediumpurple4","red4","chartreuse3","steelblue2","darkorange1","goldenrod1",NA)
+
+names(color_markers_FB) = names(FB_markers)
+
+data.frame(cell_type = names(color_markers_FB),
+           color = unlist(color_markers_FB)) %>%
+  ggplot2::ggplot(., aes(x = cell_type, y = 0, fill = cell_type)) +
+  ggplot2::geom_point(pch = 21, size = 5) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers_FB), breaks = names(color_markers_FB)) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "none",
+                 axis.line = element_blank(),
+                 axis.title = element_blank(),
+                 axis.ticks = element_blank(),
+                 axis.text.y = element_blank(),
+                 axis.text.x = element_text(angle = 10))
+```
+
+We annotate cells for cell type, with the new normalized expression matrix :
+
+```{r cell_type_2, class.source = "fold-hide", time_it = FALSE}
+sobj = aquarius::cell_annot_custom(sobj,
+                                   newname = "FB_type",
+                                   markers = FB_markers,
+                                   use_negative = TRUE,
+                                   add_score = TRUE,
+                                   verbose = TRUE)
+
+colnames(sobj@meta.data) = stringr::str_replace_all(string = colnames(sobj@meta.data),
+                                                    pattern = " ",
+                                                    replacement = "_")
+
+sobj$FB_type = factor(sobj$FB_type, levels = names(FB_markers))
+
+
+Seurat::DimPlot(sobj, group.by = "FB_type",
+                reduction = name2D,
+                pt.size = 2,
+                cols = color_markers_FB, na.value = "lightgray") +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 1,
+                 plot.title = element_text(hjust = 0.5))
+
+
+```
+
+## Cluster smoothing
+
+```{r clustering_smoothing}
+cluster_type = table(sobj$FB_type, sobj$seurat_clusters) %>%
+  prop.table(., margin = 2) %>%
+  apply(., 2, which.max)
+cluster_type = setNames(nm = names(cluster_type),
+                        levels(sobj$FB_type)[cluster_type])
+
+sobj$cluster_type = cluster_type[sobj$seurat_clusters]
+
+names(color_markers_FB) = levels(sobj$cluster_type)
+names(color_markers_FB) = names(FB_markers)
+```
+
+We visualize the new clusters :
+
+```{r clustering, fig.width = 12, fig.height = 8, eval = FALSE}
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type", label = FALSE, cols = color_markers_FB, pt.size = 0.5)
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+and split by origin :
+
+```{r plot_split_dimred_origin, fig.width = 12, fig.height = 10}
+sobj$condition_diss = paste0(sobj$condition,"_",sobj$dissociation)
+
+
+sobj$condition_diss = factor(sobj$condition_diss, levels = c("HLS_3hLib","cNFs_3hLib","HLS_18hLib","cNFs_18hLib"))
+
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        split_by = "condition_diss",
+                                        group_by = "cluster_type",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        group_color = color_markers_FB,
+                                        bg_color = "gray85", bg_pt_size = 0.3, main_pt_size = 0.3)
+
+patchwork::wrap_plots(plot_list, ncol = 3) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 3), title = "Cluster"))
+```
+
+
+```{r vizualisation, fig.width = 12, fig.height = 8}
+Seurat::Idents(sobj) = sobj$seurat_clusters
+Seurat::DimPlot(subset(sobj,idents ="9", invert = TRUE), reduction = name2D, group.by ="seurat_clusters", label = TRUE, pt.size = 0.5, label.size = 10) +
+  Seurat::NoLegend() +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+```
+
+```{r plot_split_dimred, fig.width = 12, fig.height = 10}
+sobj$condition_diss = paste0(sobj$condition,"_",sobj$dissociation)
+
+
+sobj$condition_diss = factor(sobj$condition_diss, levels = c("HLS_3hLib","cNFs_3hLib","HLS_18hLib","cNFs_18hLib"))
+
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        split_by = "condition_diss",
+                                        group_by = "seurat_clusters",
+                                        split_color = setNames(sample_info$color,
+                                                               nm = sample_info$project_name),
+                                        bg_color = "gray85", bg_pt_size = 0.3, main_pt_size = 0.3)
+
+patchwork::wrap_plots(plot_list, ncol = 4) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 3), title = "Cluster"))
+```
+
+```{r collagen_score, fig.width = 11.77, fig.height = 10}
+Col_genes = c("Col1a1", "Col1a2","Col2a1","Col3a1","Col4a1","Col4a2","Col4a3", "Col4a4","Col4a5","Col4a6","Col5a1","Col5a2","Col5a3","Col6a1","Col6a2","Col6a3", "Col6a4","Col6a5","Col6a6","Col7a1","Col8a1", "Col8a2","Col9a1", "Col9a2","Col9a3","Col10a1","Col11a1", "Col11a2","Col12a1","Col13a1","Col14a1","Col15a1","Col16a1","Col17a1","Col18a1","Col19a1","Col20a1","Col22a1","Col23a1","Col24a1","Col25a1","Col26a1","Col27a1","Col28a1")
+
+sobj$Col_score = Seurat::AddModuleScore(sobj, features = list(Col_genes))$Cluster1
+
+colors = c("chartreuse2","firebrick2","chartreuse4","firebrick4")
+
+sobj$condition_diss = factor(sobj$condition_diss, levels = c("HLS_3hLib","cNFs_3hLib","HLS_18hLib","cNFs_18hLib"))
+
+Seurat::VlnPlot(sobj, features = c("Col_score"), group.by ="condition_diss", pt.size = 0, ncol =1, cols = colors) + ggplot2::geom_boxplot(position = position_dodge(0.90), width=0.15, outlier.shape = NA, fatten = NULL) + ggplot2::stat_summary(fun=mean, geom="point", color="black", position = position_dodge(0.90), width=0.3)
+
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        color_by = "Col_score",
+                                        split_by = "condition_diss",
+                                        bg_pt_size = 0.5,
+                                        main_pt_size = 0.5)
+
+plot_list = lapply(plot_list, FUN = function(one_plot) {
+  one_plot = one_plot +
+    ggplot2::scale_color_gradientn(colors = aquarius::color_gene,
+                                 name = "Expression level") +
+  # ggplot2::theme(legend.key.height = unit(5,"mm"),
+  #                legend.key.width = unit(5,"mm"),
+  #                legend.title = element_text(size = 20),
+  #                legend.text = element_text(size = 20)) +
+  ggplot2::theme(aspect.ratio = 0.8)
+  return(one_plot)
+})
+
+names(plot_list) = levels(sobj$condition_diss)
+plot_list = plot_list[c("HLS_3hLib","cNFs_3hLib","HLS_18hLib","cNFs_18hLib")]
+patchwork::wrap_plots(plot_list, ncol = 4)
+```
+
+```{r diff_expression, fig.width = 20, fig.height = 7.5}
+Seurat::Idents(sobj) = sobj$condition_diss
+
+mark_3h = Seurat::FindMarkers(sobj, ident.1 = "cNFs_3hLib", ident.2="HLS_3hLib") %>%
+  as.data.frame() %>%
+  dplyr::arrange(avg_logFC) %>%
+  dplyr::filter(avg_logFC>0)
+
+mark_18h = Seurat::FindMarkers(sobj, ident.1 = "cNFs_18hLib", ident.2="HLS_18hLib") %>%
+  as.data.frame() %>%
+  dplyr::arrange(avg_logFC) %>%
+  dplyr::filter(avg_logFC>0)
+
+diff_3h = setdiff(rownames(mark_3h), rownames(mark_18h))
+diff_18h = setdiff(rownames(mark_18h), rownames(mark_3h))
+
+ggvenn::ggvenn(list("3h" = rownames(mark_3h),
+                    "18h" = rownames(mark_18h)),
+               text_size = 10, show_percentage = FALSE) +
+  ggplot2::theme(plot.title = element_text(hjust = 0.5, size = 20))
+```
+
+# Save
+
+We save the Seurat object :
+
+```{r save_sobj}
+saveRDS(sobj, file = paste0(out_dir, "/", save_name, "_sobj.rds"))
+saveRDS(sample_info, file = paste0(out_dir, "/", save_name, "_sample_info.rds"))
+```
+
+
+# R Session
+
+```{r sessioninfo, echo = FALSE, fold_output = TRUE}
+sessionInfo()
+```
+
+
+
+
+
+
+

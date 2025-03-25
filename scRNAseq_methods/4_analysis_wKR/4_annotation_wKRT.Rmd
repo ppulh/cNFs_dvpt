@@ -1,0 +1,278 @@
+---
+title: "ECM genes"
+subtitle: "Analysis heatmaps + violin plots"
+author: "Pernelle"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    code_folding: show
+    code_download: true
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r clean, echo = FALSE}
+rm(list = ls())
+```
+
+<!-- Automatically computes and prints in the output the running time for any code chunk -->
+```{r, echo=FALSE}
+# https://github.com/rstudio/rmarkdown/issues/1453
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold_", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", "show", "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot"),
+  time_it = local({
+    now = NULL
+    function(before, options) {
+      if (options$time_it) {
+        if (before) {
+          now <= Sys.time()
+        } else {
+          res = difftime(Sys.time(), now, units = "secs")
+          paste("(Time to run :", round(res, digits = 2), "s)")
+        }
+      }
+    }
+  })
+)
+```
+
+<!-- Set default parameters for all chunks -->
+```{r, setup, include = FALSE}
+set.seed(1337L)
+knitr::opts_chunk$set(echo = TRUE, # display code
+                      # display chunk output
+                      message = FALSE,
+                      warning = FALSE,
+                      fold_output = FALSE, # usefull for sessionInfo()
+                      fold_plot = FALSE,
+                      
+                      # figure settings
+                      fig.align = 'center',
+                      fig.width = 20,
+                      fig.height = 15,
+                      
+                      # something about seed, chunk and Rmarkdown compilation
+                      # https://stackoverflow.com/questions/39417003/long-vectors-not-supported-yet-error-in-rmd-but-not-in-r-script
+                      # cache = TRUE,
+                      cache.lazy = FALSE, 
+                      
+                      # add runtime after chunk
+                      time_it = FALSE)
+```
+
+
+```{r library}
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(org.Mm.eg.db)
+library(ComplexHeatmap)
+```
+
+
+# Preparation
+
+In this section, we set the global settings of the analysis. We will store data there :
+
+```{r out_dir}
+save_name = "combined_cNFs_HLS"
+out_dir = "."
+```
+
+
+We load the dataset :
+
+```{r load_sobj}
+sobj = readRDS(paste0(out_dir, "/../3_combined/", save_name, "_sobj.rds"))
+sobj
+```
+
+and sample information :
+
+```{r load_sample_info}
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_sample_info.rds"))
+sample_info
+```
+
+This is the projection of interest :
+
+```{r name2D}
+name2D = "harmony_39_umap"
+```
+
+We load metadata :
+
+```{r load_metadata}
+color_markers = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_color_markers.rds"))
+cell_markers = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_cell_markers.rds"))
+sample_info = readRDS(paste0(out_dir, "/../1_metadata/", "dissociation_methods_metadata_sample_info.rds"))
+```
+
+We visualize clusters :
+
+```{r clustering, fig.width = 12, fig.height = 8}
+cell_markers_2 = list(
+  "Schwann cells" = c("Sox10", "Plp1", "S100b", "Lgi4", "Mpz","Pmp22","Mal","Egr2","Gap43","Ngfr","Scn7a"),
+  "Immune cells" = c("Ptprc","Xcr1","Cpa3","Tpsab1","Hdc","Tpsb2"),
+  "Fibroblasts" = c("Abi3bp","Ramp1","Mylk","Acta2", "Tagln","Grem2","Pdgfra","Dcn" ,"Sparc","Col3a1","Lum","Cyp2f2","Ccl19" , "Gpx3","Gsn","Crabp1","Pappa2","Corin", "Nrg2","Cntn1","Plac9","Antxr1","Clmp"),
+  "Vascular cells" = c("Acta2","Rgs5", "Notch3", "Gucy1a1", "Mylk", "Gm13889", "Tagln", "Myh11","Des","Fabp4", "Pecam1", "Cldn5", "Ptprb", "Egfl7"),
+  "Melanocytes" = c("Mlana", "Dct"),
+  "Keratinocytes" = c("Krt27","Krt28","Krt10","Krt15","Krt14","Krt1","Epcam","Krt5","Cdh1","Gm15987","Abca12"),
+  "Muscle cells" = c("Pax7","Myod1","Acta2","Des"))
+
+color_markers_2 = c("khaki4","darkorchid4","green4","firebrick","goldenrod1","lightblue","palevioletred")
+names(color_markers_2) = names(cell_markers_2)
+```
+
+
+```{r new_annotation, class.source = "fold-hide"}
+sobj = aquarius::cell_annot_custom(sobj,
+                                   newname = "cell_types_2",
+                                   markers = cell_markers_2,
+                                   use_negative = TRUE,
+                                   add_score = TRUE,
+                                   verbose = TRUE)
+
+colnames(sobj@meta.data) = stringr::str_replace_all(string = colnames(sobj@meta.data),
+                                                    pattern = " ",
+                                                    replacement = "_")
+
+sobj$cell_types_2 = factor(sobj$cell_types_2, levels = names(cell_markers_2))
+
+table(sobj$cell_types_2) 
+
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cell_types_2", label = TRUE, pt.size = 0.5, label.size = 15) +
+  Seurat::NoAxes() +
+  Seurat::NoLegend() +
+  ggplot2::theme(aspect.ratio = 0.8)
+
+```
+
+```{r cluster_smoothing_SC_subtypes, fig.width = 12, fig.height = 8}
+cluster_type = table(sobj$cell_types_2, sobj$seurat_clusters) %>%
+  prop.table(., margin = 2) %>%
+  apply(., 2, which.max)
+cluster_type = setNames(nm = names(cluster_type),
+                            levels(sobj$cell_types_2)[cluster_type])
+
+sobj$cluster_type = cluster_type[sobj$seurat_clusters]
+
+
+Seurat::DimPlot(sobj, reduction = name2D, group.by ="cluster_type", label = FALSE, pt.size = 0.5, cols = color_markers_2) +
+  Seurat::NoLegend() +
+  Seurat::NoAxes() +
+  ggplot2::theme(aspect.ratio = 0.8)
+
+```
+
+```{r barplot_count_SCs_subtypes, fig.width = 5, fig.height = 6}
+Seurat::Idents(sobj) = sobj$cluster_type
+
+sobj$dissociation_condition = paste0(sobj$dissociation, "_",sobj$condition)
+
+sobj$cluster_type = factor(sobj$cluster_type, levels = c("Keratinocytes","Vascular cells","Schwann cells","Melanocytes","Immune cells","Muscle cells","Fibroblasts"))
+
+sobj$dissociation_condition = factor(sobj$dissociation_condition, levels = c("3hLib_HLS","3hLib_cNFs","18hLib_HLS","18hLib_cNFs"))
+
+quantif = table(sobj$dissociation_condition) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c("Sample", "nb_cells"))
+
+plot_list = table(sobj$dissociation_condition, sobj$cluster_type) %>%
+  as.data.frame.table() %>%
+  `colnames<-`(c( "Sample", "Cell Type", "Number")) %>%
+  aquarius::plot_barplot(.,
+                         x = "Sample", y = "Number", fill = "Cell Type",
+                         position = position_fill()) +
+  ggplot2::scale_fill_manual(values = unlist(color_markers_2),
+                             breaks = names(color_markers_2),
+                             name = "Cell Type") +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, by = 0.5),
+                              labels = paste0(seq(0, 100, by = 50)," %"),
+                              expand = ggplot2::expansion(add = c(0, 0.05))) +
+  ggplot2::geom_label(data = quantif, inherit.aes = FALSE,
+                      aes(x = .data$Sample, y = 1.05, label = .data$nb_cells),
+                      label.size = 0, size = 8) +
+  ggplot2::theme(axis.title.y = element_blank(),
+                 axis.line.x = element_line(colour = "lightgray"),
+                 text = element_text(size = 15),
+                 legend.position = "none")
+plot_list
+```
+
+```{r collagen_score_calcul, fig.width = 22, fig.height = 7}
+Col_genes = c("Col1a1", "Col1a2","Col2a1","Col3a1","Col4a1","Col4a2","Col4a3", "Col4a4","Col4a5","Col4a6","Col5a1","Col5a2","Col5a3","Col5a4","Col6a1","Col6a2","Col6a3", "Col6a4","Col6a5","Col6a6","Col7a1","Col8a1", "Col8a2","Col9a1", "Col9a2","Col9a3","Col10a1","Col11a1", "Col11a2","Col11a3","Col12a1","Col13a1","Col14a1","Col15a1","Col16a1","Col17a1","Col18a1","Col19a1","Col20a1","Col21a1","Col22a1","Col23a1","Col24a1","Col25a1","Col26a1","Col27a1","Col28a1")
+
+sobj$Col_score = Seurat::AddModuleScore(sobj, features = list(Col_genes))$Cluster1
+```
+
+
+```{r collagen_score_vln_plot, fig.width = 22, fig.height = 7}
+Seurat::Idents(sobj) = sobj$cluster_type
+
+Seurat::VlnPlot(sobj, features = c("Col_score"), split.by= "dissociation_condition", group.by ="cluster_type", pt.size = 0, ncol =1)  + ggplot2::geom_boxplot(position = position_dodge(0.90), width=0.15, outlier.shape = NA, fatten = NULL) + ggplot2::stat_summary(fun=mean, geom="point", color="black", position = position_dodge(0.90), width=0.3)
+```
+
+
+```{r collagen_score_feature_plot_split, fig.width = 22, fig.height = 7}
+plot_list = aquarius::plot_split_dimred(sobj,
+                                        reduction = name2D,
+                                        color_by = "Col_score",
+                                        split_by = "dissociation_condition",
+                                        bg_pt_size = 0.5,
+                                        main_pt_size = 0.5)
+
+plot_list = lapply(plot_list, FUN = function(one_plot) {
+  one_plot = one_plot +
+    ggplot2::scale_color_gradientn(colors = aquarius::color_gene,
+                                 name = "Expression level") +
+  # ggplot2::theme(legend.key.height = unit(5,"mm"),
+  #                legend.key.width = unit(5,"mm"),
+  #                legend.title = element_text(size = 20),
+  #                legend.text = element_text(size = 20)) +
+  ggplot2::theme(aspect.ratio = 0.8)
+  return(one_plot)
+})
+
+names(plot_list) = levels(sobj$dissociation_condition)
+plot_list = plot_list[c("3hLib_HLS","3hLib_cNFs","18hLib_HLS","18hLib_cNFs")]
+patchwork::wrap_plots(plot_list, ncol = 3)
+```
+
+# Save
+
+We save the Seurat object :
+
+```{r save_sobj}
+saveRDS(sobj, file = paste0(out_dir, "/", save_name, "_sobj.rds"))
+saveRDS(sample_info, file = paste0(out_dir, "/", save_name, "_sample_info.rds"))
+```
+
+# R Session
+
+```{r sessioninfo, echo = FALSE, fold_output = TRUE}
+sessionInfo()
+```
