@@ -1,0 +1,421 @@
+<!DOCTYPE HTML>
+
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+    <script type="text/javascript" src="./index_layout/functions.js">
+    </script>
+    <link rel="stylesheet" href="./index_layout/style.css">
+    <link rel="icon" type="image/x-icon" href="./index_layout/logo/favicon.ico">
+    <title>scRNA-Seq</title>
+</head>
+
+<body>
+    <!--
+        # https://plaintexttools.github.io/plain-text-table/
+        ┌──────────┬───────────────┬───────────┐
+        │ top left │     title     │ top right │  # first-row
+        ├───────┬──┴───────────────┴───────────┤
+        │       │                              │
+        │       │                              │
+        │ menu  │           iframe             │
+        │       │                              │
+        │       │                              │
+        └───────┴──────────────────────────────┘
+        -->
+
+    <div class="body-container">
+
+        <!-- FIRST ROW -->
+        <div class="first-row">
+            <!-- UPDATE BUTTON -->
+            <div class="left-corner" id="dynamic-url">
+                Url will be displayed there
+            </div>
+
+            <!-- TITLE -->
+            <div class="title">
+                <a href='index.html' title='Home'>Pulh <i>et al.</i> (2025)</a>
+            </div>
+
+            <!-- GITHUB LINK -->
+            <div class="right-corner">
+                <a class="github" href="https://github.com/audrey-onfroy" title="Github"></a>
+            </div>
+        </div>
+
+        <div class="column-container">
+
+            <!-- MENU -->
+            <div class="first-column">
+
+                <!-- COPY PASTE MENU THERE -->
+                <ul>
+
+                    <!-- METHODS -->
+                    <span style="color:black">scRNA-Seq methods</span>
+                    <br>
+
+                    <li><button id='./scRNAseq_methods/1_metadata/0_build_metadata.html' class='ulli_button'
+                            onClick="changeIframe('./scRNAseq_methods/1_metadata/0_build_metadata.html')">Metadata</button>
+                    </li>
+                    <li><a onClick="toggleSwitch(this)">Individual &#9662;</a>
+                        <ul style="display:none">
+                            <li><button id='./scRNAseq_methods/2_individual/1_make_individual_2023_09.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_methods/2_individual/1_make_individual_2023_09.html')">2023_09</button>
+                            </li>
+                            <li><button id='./scRNAseq_methods/2_individual/1_make_individual_2023_10.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_methods/2_individual/1_make_individual_2023_10.html')">2023_10</button>
+                            </li>
+                            <li><button id='./scRNAseq_methods/2_individual/1_make_individual_2023_11.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_methods/2_individual/1_make_individual_2023_11.html')">2023_11</button>
+                            </li>
+                            <li><button id='./scRNAseq_methods/2_individual/1_make_individual_2023_12.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_methods/2_individual/1_make_individual_2023_12.html')">2023_12</button>
+                            </li>
+                        </ul>
+                    </li>
+
+
+                    <li>Combined dataset
+                        <ul>
+                            <li><button id='./scRNAseq_methods/3_combined/2_make_combined_dataset.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_methods/3_combined/2_make_combined_dataset.html')">Make
+                                    dataset</button>
+                            </li>
+                            <li><button id='./scRNAseq_methods/4_analysis_wKR/4_annotation_wKRT.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_methods/4_analysis_wKR/4_annotation_wKRT.html')">Annotation</button>
+                            </li>
+                            <li><button id='./scRNAseq_methods/5_krt_removal/4_krt_removal.html' class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_methods/5_krt_removal/4_krt_removal.html')">Keratinocyte
+                                    removal</button>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <li>Zoom in...
+                        <ul>
+                            <li><a onClick="toggleSwitch(this)">Fibroblasts &#9662;</a>
+                                <ul style="display:none">
+                                    <li><button id='./scRNAseq_methods/6_fibro_zoom/6_fibro_extraction.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_methods/6_fibro_zoom/6_fibro_extraction.html')">Extraction</button>
+                                    </li>
+                                    <li><button id='./scRNAseq_methods/7_annotation_fibro/7_annotation_fibro.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_methods/7_annotation_fibro/7_annotation_fibro.html')">Annotation</button>
+                                    </li>
+                                </ul>
+                            </li>
+
+                            <li><a onClick="toggleSwitch(this)">Schwann cells &#9662;</a>
+                                <ul style="display:none">
+                                    <li><button id='./scRNAseq_methods/6_SCs_extraction/6_zoom_SCs.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_methods/6_SCs_extraction/6_zoom_SCs.html')">Extraction</button>
+                                    </li>
+                                    <li><button id='./scRNAseq_methods/7_annotation_SCs/7_annotation_SCs.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_methods/7_annotation_SCs/7_annotation_SCs.html')">Annotation</button>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <br>
+                    <br>
+
+                    <!-- MICRO-ENVIRONMENT -->
+                    <span style="color:black">scRNA-Seq micro-environment</span>
+                    <br>
+
+                    <li><button id='./scRNAseq_microenvironment/1_metadata/0_build_metadata_env.html'
+                            class='ulli_button'
+                            onClick="changeIframe('./scRNAseq_microenvironment/1_metadata/0_build_metadata_env.html')">Metadata</button>
+                    </li>
+
+                    <li><a onClick="toggleSwitch(this)">Individual &#9662;</a>
+                        <ul style="display:none">
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_09.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_09.html')">2023_09</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_10.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_10.html')">2023_10</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_20.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_20.html')">2023_20</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_26.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_26.html')">2023_26</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_31.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_31.html')">2023_31</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_33.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_33.html')">2023_33</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_35.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_35.html')">2023_35</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_37.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_37.html')">2023_37</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_39.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_39.html')">2023_39</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_41.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_41.html')">2023_41</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_43.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_43.html')">2023_43</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_45.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_45.html')">2023_45</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/2_individual/1_make_individual_2023_47.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/2_individual/1_make_individual_2023_47.html')">2023_47</button>
+                            </li>
+                        </ul>
+                    </li>
+
+
+                    <li>Combined dataset
+                        <ul>
+                            <li><button id='./scRNAseq_microenvironment/3_combined/2_make_combined_dataset.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/3_combined/2_make_combined_dataset.html')">Make
+                                    dataset</button>
+                            </li>
+                            <li><button id='./scRNAseq_microenvironment/4_krt_removal/4_krt_removal.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_microenvironment/4_krt_removal/4_krt_removal.html')">Keratinocyte
+                                    removal</button>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <li>Zoom in...
+                        <ul>
+                            <li><a onClick="toggleSwitch(this)">Fibroblasts &#9662;</a>
+                                <ul style="display:none">
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/5_fibro_extraction/5_fibro_extraction_v2.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/5_fibro_extraction/5_fibro_extraction_v2.html')">Extraction</button>
+                                    </li>
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/6_fibro_annotation/6_fibro_annotation.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/6_fibro_annotation/6_fibro_annotation.html')">Annotation</button>
+                                    </li>
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/7_pop_analysis/7_fibroblasts_ECM_analysis.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/7_pop_analysis/7_fibroblasts_ECM_analysis.html')">Analysis</button>
+                                    </li>
+                                </ul>
+                            </li>
+
+
+                            <li><a onClick="toggleSwitch(this)">Immune cells &#9662;</a>
+                                <ul style="display:none">
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/5_immune_extraction/6_immune_extraction.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/5_immune_extraction/6_immune_extraction.html')">Extraction</button>
+                                    </li>
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/6_immune_cell_annotation/6_immune_cell_annotation.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/6_immune_cell_annotation/6_immune_cell_annotation.html')">Annotation</button>
+                                    </li>
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/7_pop_analysis/7_Immune_Cell_Analysis.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/7_pop_analysis/7_Immune_Cell_Analysis.html')">Analysis</button>
+                                    </li>
+                                </ul>
+                            </li>
+
+                            <li><a onClick="toggleSwitch(this)">Vascular cells &#9662;</a>
+                                <ul style="display:none">
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/5_vascular_extraction/5_vascular_extraction.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/5_vascular_extraction/5_vascular_extraction.html')">Extraction</button>
+                                    </li>
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/6_vascular_cells_annotation/6_Vascular_cell_annotation.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/6_vascular_cells_annotation/6_Vascular_cell_annotation.html')">Annotation</button>
+                                    </li>
+                                    <li><button
+                                            id='./scRNAseq_microenvironment/7_pop_analysis/7_Vascular_cells_analysis.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_microenvironment/7_pop_analysis/7_Vascular_cells_analysis.html')">Analysis</button>
+                                    </li>
+                                </ul>
+                            </li>
+
+
+
+                        </ul>
+                    </li>
+
+                    <br>
+                    <br>
+
+                    <!-- TOM+ CELLS -->
+                    <span style="color:black">scRNA-Seq Tom+ cells</span>
+                    <br>
+
+                    <li><button id='./scRNAseq_Tom_cells/1_metadata/0_build_metadata_Tom.html' class='ulli_button'
+                            onClick="changeIframe('./scRNAseq_Tom_cells/1_metadata/0_build_metadata_Tom.html')">Metadata</button>
+                    </li>
+
+                    <li><a onClick="toggleSwitch(this)">Individual &#9662;</a>
+                        <ul style="display:none">
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_17.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_17.html')">2023_17</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_18.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_18.html')">2023_18</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_21.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_21.html')">2023_21</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_27.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_27.html')">2023_27</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_32.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_32.html')">2023_32</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_34.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_34.html')">2023_34</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_36.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_36.html')">2023_36</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_38.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_38.html')">2023_38</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_40.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_40.html')">2023_40</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_42.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_42.html')">2023_42</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_44.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_44.html')">2023_44</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_46.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_46.html')">2023_46</button>
+                            </li>
+                            <li><button id='./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_48.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/2_individual/1_make_individual_Tom_2023_48.html')">2023_48</button>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <li>Combined dataset
+                        <ul>
+                            <li><button id='./scRNAseq_Tom_cells/3_combined/2_make_combined_dataset_Tom.html'
+                                    class='ulli_button'
+                                    onClick="changeIframe('./scRNAseq_Tom_cells/3_combined/2_make_combined_dataset_Tom.html')">Make
+                                    dataset</button>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <li>Zoom in...
+                        <ul>
+                            <li><a onClick="toggleSwitch(this)">Schwann cells &#9662;</a>
+                                <ul style="display:none">
+                                    <li><button id='./scRNAseq_Tom_cells/4_zoomSC/21_zoom_SC_Tom_dataset.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_Tom_cells/4_zoomSC/21_zoom_SC_Tom_dataset.html')">Make
+                                            dataset</button>
+                                    </li>
+                                    <li><button id='./scRNAseq_Tom_cells/5_annotation/5_annotation_SCs.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_Tom_cells/5_annotation/5_annotation_SCs.html')">Annotation</button>
+                                    </li>
+
+                                    <li>Analysis
+                                        <ul>
+                                            <li><button id='./scRNAseq_Tom_cells/6_analyse/6_Axonal_cues_analysis.html'
+                                                    class='ulli_button'
+                                                    onClick="changeIframe('./scRNAseq_Tom_cells/6_analyse/6_Axonal_cues_analysis.html')">Axonal
+                                                    cues</button>
+                                            </li>
+                                            <li><button id='./scRNAseq_Tom_cells/6_analyse/6_ECM_analysis.html'
+                                                    class='ulli_button'
+                                                    onClick="changeIframe('./scRNAseq_Tom_cells/6_analyse/6_ECM_analysis.html')">ECM</button>
+                                            </li>
+                                            <li><button id='./scRNAseq_Tom_cells/6_analyse/6_MAPK_analysis.html'
+                                                    class='ulli_button'
+                                                    onClick="changeIframe('./scRNAseq_Tom_cells/6_analyse/6_MAPK_analysis.html')">MAPK</button>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+
+                            <li><a onClick="toggleSwitch(this)">nmSC &#9662;</a>
+                                <ul style="display:none">
+                                    <li><button id='./scRNAseq_Tom_cells/4_zoom_nmSC/4_zoom_nmSC_Tom_dataset.html'
+                                            class='ulli_button'
+                                            onClick="changeIframe('./scRNAseq_Tom_cells/4_zoom_nmSC/4_zoom_nmSC_Tom_dataset.html')">Make
+                                            dataset</button>
+                                    </li>
+
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+                <!-- (END OF) COPY PASTE MENU THERE -->
+            </div>
+
+            <!-- IFRAME -->
+            <iframe id="dynamic-iframe" class="second-column" src="./index_layout/pages/first.html"></iframe>
+        </div>
+    </div>
+</body>
+
+</html>
